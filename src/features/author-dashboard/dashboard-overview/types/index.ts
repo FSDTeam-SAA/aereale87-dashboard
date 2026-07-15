@@ -1,20 +1,39 @@
 export type AuthorOverviewStat = {
   title: string;
+  subtitle: string;
   value: string;
   change: string;
   detail: string;
-  icon: "views" | "drafts" | "comments" | "schedule";
+  previousLabel: string;
+  accent: string;
+  icon: "sales" | "orders" | "pending";
 };
 
-export type AuthorTask = {
+export type AuthorWeeklyMetric = {
+  label: string;
+  value: string;
+  detail: string;
+};
+
+export type AuthorChartPoint = {
+  day: string;
+  value: number;
+  tooltip: string;
+};
+
+export type AuthorProduct = {
   id: string;
   title: string;
-  due: string;
-  status: "Drafting" | "In Review" | "Scheduled";
+  views: number;
+  sales: number;
+  status: "Published" | "Draft" | "Archived";
+  revenue: string;
+  coverTone: string;
 };
 
 export type AuthorDashboardOverviewData = {
   stats: AuthorOverviewStat[];
-  tasks: AuthorTask[];
-  highlights: string[];
+  weeklyMetrics: AuthorWeeklyMetric[];
+  chartPoints: AuthorChartPoint[];
+  products: AuthorProduct[];
 };

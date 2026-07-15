@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 
+import { Logo } from "@/components/shared/logo";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -23,29 +24,25 @@ export function MobileSidebar({ items, sectionLabel }: MobileSidebarProps) {
         onClick={() => setOpen(true)}
         variant="outline"
         size="icon"
-        className="lg:hidden"
+        className="border-white/20 bg-white/8 text-white hover:bg-white/12 hover:text-white lg:hidden"
         aria-label="Open navigation menu"
       >
         <Menu />
       </Button>
       <div
         className={cn(
-          "fixed inset-0 z-50 bg-slate-950/40 transition-opacity lg:hidden",
+          "fixed inset-0 z-50 bg-slate-950/50 transition-opacity lg:hidden",
           open ? "opacity-100" : "pointer-events-none opacity-0"
         )}
       >
         <div
           className={cn(
-            "absolute inset-y-0 left-0 flex w-72 flex-col bg-slate-950 text-slate-100 transition-transform",
+            "absolute inset-y-0 left-0 flex w-72 flex-col bg-[#66756d] text-slate-100 transition-transform",
             open ? "translate-x-0" : "-translate-x-full"
           )}
         >
-          <div className="flex items-center justify-between border-b border-white/10 px-5 py-5">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-300/80">
-                {sectionLabel}
-              </p>
-            </div>
+          <div className="flex items-start justify-between px-5 py-5">
+            <Logo inverted />
             <Button
               onClick={() => setOpen(false)}
               variant="ghost"
@@ -56,7 +53,8 @@ export function MobileSidebar({ items, sectionLabel }: MobileSidebarProps) {
               <X />
             </Button>
           </div>
-          <nav className="flex flex-1 flex-col gap-2 px-4 py-6">
+          <p className="sr-only">{sectionLabel}</p>
+          <nav className="flex flex-1 flex-col gap-6 px-4 py-6">
             {items.map((item) => (
               <SidebarItem
                 key={item.href}

@@ -9,7 +9,11 @@ import {
   MessageSquare,
   PenSquare,
   Shield,
+  Settings,
+  ShoppingCart,
+  Upload,
   Users,
+  Wallet,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -24,6 +28,10 @@ const iconMap = {
   shield: Shield,
   users: Users,
   "bar-chart-3": BarChart3,
+  upload: Upload,
+  wallet: Wallet,
+  "shopping-cart": ShoppingCart,
+  settings: Settings,
 } as const;
 
 type SidebarItemProps = {
@@ -38,12 +46,9 @@ export function SidebarItem({ item, onNavigate }: SidebarItemProps) {
 
   if (item.disabled) {
     return (
-      <div className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-slate-400">
-        <Icon className="size-4" />
-        <span>{item.title}</span>
-        <span className="ml-auto rounded-full border border-white/10 px-2 py-0.5 text-[11px] uppercase tracking-[0.18em]">
-          Soon
-        </span>
+      <div className="flex h-12 items-center gap-2 px-6 py-2 text-base text-[#fcfbf7]">
+        <Icon className="size-5 shrink-0" />
+        <span className="truncate">{item.title}</span>
       </div>
     );
   }
@@ -53,14 +58,14 @@ export function SidebarItem({ item, onNavigate }: SidebarItemProps) {
       href={item.href}
       onClick={onNavigate}
       className={cn(
-        "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-colors",
+        "flex h-12 items-center gap-2 px-6 py-3 text-base transition-all",
         isActive
-          ? "bg-emerald-400/15 text-white shadow-[inset_0_0_0_1px_rgba(110,231,183,0.2)]"
-          : "text-slate-300 hover:bg-white/5 hover:text-white"
+          ? "rounded-l-[99px] rounded-r-none bg-[#cfaf45] font-bold text-[#f9fafb]"
+          : "text-[#fcfbf7] hover:bg-white/8 hover:text-white"
       )}
     >
-      <Icon className="size-4" />
-      <span>{item.title}</span>
+      <Icon className="size-5 shrink-0" />
+      <span className="truncate">{item.title}</span>
     </Link>
   );
 }

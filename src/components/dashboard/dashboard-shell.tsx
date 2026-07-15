@@ -5,7 +5,18 @@ import { Topbar } from "@/components/dashboard/topbar";
 export type DashboardNavItem = {
   title: string;
   href: string;
-  icon: "layout-dashboard" | "book-open-text" | "pen-square" | "message-square" | "shield" | "users" | "bar-chart-3";
+  icon:
+    | "layout-dashboard"
+    | "book-open-text"
+    | "pen-square"
+    | "message-square"
+    | "shield"
+    | "users"
+    | "bar-chart-3"
+    | "upload"
+    | "wallet"
+    | "shopping-cart"
+    | "settings";
   disabled?: boolean;
 };
 
@@ -27,16 +38,15 @@ export function DashboardShell({
   user,
 }: DashboardShellProps) {
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,_#f7fbfa_0%,_#eff5f2_100%)]">
-      <div className="mx-auto flex min-h-screen w-full max-w-[1600px]">
+    <div className="min-h-screen bg-[#fcfbf7]">
+      <div className="mx-auto flex min-h-screen w-full">
         <Sidebar items={items} sectionLabel={sectionLabel} />
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+        <div className="flex min-h-screen min-w-0 flex-1 flex-col lg:pl-64">
           <Topbar
-            sectionLabel={sectionLabel}
             user={user}
             mobileSidebar={<MobileSidebar items={items} sectionLabel={sectionLabel} />}
           />
-          <main className="flex-1 px-4 py-6 md:px-6 lg:px-8">{children}</main>
+          <main className="flex-1 px-4 py-4 md:px-6 md:py-6 lg:px-6">{children}</main>
         </div>
       </div>
     </div>

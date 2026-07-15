@@ -2,27 +2,34 @@ import { DashboardShell, type DashboardNavItem } from "@/components/dashboard/da
 
 const authorNavItems: DashboardNavItem[] = [
   {
-    title: "Overview",
+    title: "Dashboard Overview",
     href: "/author-dashboard",
     icon: "layout-dashboard",
   },
   {
-    title: "My Posts",
-    href: "/author-dashboard/posts",
+    title: "My Books",
+    href: "/author-dashboard/books",
     icon: "book-open-text",
-    disabled: true,
   },
   {
-    title: "Draft Queue",
-    href: "/author-dashboard/drafts",
-    icon: "pen-square",
-    disabled: true,
+    title: "Upload Content",
+    href: "/author-dashboard/upload-content",
+    icon: "upload",
   },
   {
-    title: "Messages",
-    href: "/author-dashboard/messages",
-    icon: "message-square",
-    disabled: true,
+    title: "Payout Preferences",
+    href: "/author-dashboard/payout-preferences",
+    icon: "wallet",
+  },
+  {
+    title: "Orders",
+    href: "/author-dashboard/orders",
+    icon: "shopping-cart",
+  },
+  {
+    title: "Settings",
+    href: "/author-dashboard/settings",
+    icon: "settings",
   },
 ];
 
@@ -34,11 +41,11 @@ export default function AuthorLayout({
   return (
     <DashboardShell
       items={authorNavItems}
-      sectionLabel="Author workspace"
+      sectionLabel="Author dashboard"
       user={{
-        name: "Maya Patel",
-        email: "maya@example.com",
-        role: "Senior Author",
+        name: "Demo Name",
+        email: "demo@authorhub.com",
+        role: "Super Admin",
       }}
     >
       {children}

@@ -15,15 +15,9 @@ export function UserNav({ user }: UserNavProps) {
     .toUpperCase();
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-      <div className="flex size-10 items-center justify-center rounded-2xl bg-emerald-700 text-sm font-semibold text-white">
+    <div className="flex items-center gap-3">
+      <div className="flex size-10 items-center justify-center overflow-hidden rounded-full bg-[#24352f] text-sm font-semibold text-white ring-1 ring-black/10">
         {initials}
-      </div>
-      <div className="hidden text-right sm:block">
-        <p className="text-sm font-semibold text-slate-900">{user.name}</p>
-        <p className="text-xs text-slate-500">
-          {user.role} · {user.email}
-        </p>
       </div>
     </div>
   );
