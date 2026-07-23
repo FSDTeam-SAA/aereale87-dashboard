@@ -1,4 +1,9 @@
-export type AuthorOrderStatus = "Completed" | "Cancelled";
+export type AuthorOrderStatus =
+  | "Pending request"
+  | "Requested"
+  | "Approved"
+  | "Paid"
+  | "Rejected";
 
 export type AuthorOrderTab = {
   id: string;
@@ -14,12 +19,15 @@ export type AuthorOrderSummary = {
 
 export type AuthorOrderRecord = {
   id: string;
+  payoutId: string;
   orderId: string;
   customer: string;
   products: string;
   amount: string;
   date: string;
   status: AuthorOrderStatus;
+  payoutStatus: string;
+  canRequestPayout: boolean;
 };
 
 export type AuthorOrdersData = {

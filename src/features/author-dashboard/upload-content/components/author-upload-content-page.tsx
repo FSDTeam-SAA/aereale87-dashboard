@@ -65,6 +65,16 @@ type PrintFileValidationResult = {
   coverDimensions?: { width: string; height: string; unit: string };
 };
 
+type PrintOptionsResponse = {
+  paperback: Array<{ newSku: string }>;
+  hardcover: Array<{ newSku: string }>;
+  categories: {
+    bookTypes: Array<{ value: string; label: string }>;
+    paperbackBindings: Array<{ value: string; label: string }>;
+    hardcoverBindings: Array<{ value: string; label: string }>;
+  };
+};
+
 const formatLabels: Record<FormatKey, string> = {
   EBOOK: "eBook",
   AUDIOBOOK: "Audiobook",
@@ -79,6 +89,7 @@ export function AuthorUploadContentPage({ accessToken, isFoundingAuthor }: { acc
   const [formats, setFormats] = useState<FormatKey[]>(["EBOOK"]);
   const [pending, setPending] = useState(false);
   const [specOptions, setSpecOptions] = useState<SpecificationOptions | null>(null);
+  const [printOptions, setPrintOptions] = useState<PrintOptionsResponse | null>(null);
   const [matchedSpecs, setMatchedSpecs] = useState<Record<string, MatchResult>>({});
   const [fileValidationPending, setFileValidationPending] = useState<Record<string, boolean>>({});
   const [fileValidations, setFileValidations] = useState<Record<string, PrintFileValidationResult>>({});
@@ -93,6 +104,20 @@ export function AuthorUploadContentPage({ accessToken, isFoundingAuthor }: { acc
         setSpecOptions(unwrapApiData<SpecificationOptions>(payload));
       })
       .catch((error: Error) => toast.error(error.message || "Unable to load print specifications."));
+  }, [accessToken]);
+
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/print/options`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message);
+        setPrintOptions(unwrapApiData<PrintOptionsResponse>(payload));
+      })
+      .catch((error: Error) =>
+        toast.error(error.message || "Unable to load print option catalog."),
+      );
   }, [accessToken]);
 
   useEffect(() => {
@@ -251,6 +276,16 @@ export function AuthorUploadContentPage({ accessToken, isFoundingAuthor }: { acc
               <BookOpen className="size-5" />
               Book information
             </h2>
+            {printOptions ? (
+              <div className="rounded-md border border-[#eadfbf] bg-[#fff9ea] p-4 text-sm text-slate-700">
+                <p className="font-semibold text-slate-900">Live print option catalog loaded</p>
+                <p className="mt-1">
+                  {printOptions.categories.bookTypes.length} book types,{" "}
+                  {printOptions.paperback.length} paperback combinations, and{" "}
+                  {printOptions.hardcover.length} hardcover combinations are available from the backend print options API.
+                </p>
+              </div>
+            ) : null}
             <Field label="Book title" name="title" defaultValue={book?.title} required />
             <TextArea label="Description" name="description" defaultValue={book?.description || ""} required />
             <div className="grid gap-4 md:grid-cols-2">

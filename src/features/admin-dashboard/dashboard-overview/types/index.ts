@@ -20,3 +20,11 @@ export type AdminDashboardOverviewData = {
   }[];
   activity: AdminActivity[];
 };
+
+export type AdminStatisticsResponse = {
+  totalUsers: number;
+  totalPublishedBooks: number;
+  totalSales: number;
+  totalGrossRevenue: number;
+  totalPlatformRevenue: number;
+};

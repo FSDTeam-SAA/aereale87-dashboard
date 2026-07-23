@@ -1,58 +1,100 @@
-import type { AdminDashboardOverviewData } from "../types";
+import type {
+  AdminDashboardOverviewData,
+  AdminStatisticsResponse,
+} from "../types";
 
-export async function getAdminDashboardOverview(): Promise<AdminDashboardOverviewData> {
-  return Promise.resolve({
+type ApiEnvelope<T> = {
+  data: T;
+};
+
+type AdminPayout = {
+  id: string;
+  status: string;
+};
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+  }).format(value);
+}
+
+export async function getAdminDashboardOverview(
+  accessToken: string,
+): Promise<AdminDashboardOverviewData> {
+  const [statisticsResponse, payoutsResponse] = await Promise.all([
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/statistics/admin`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    }),
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/payouts/admin`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    }),
+  ]);
+
+  if (!statisticsResponse.ok || !payoutsResponse.ok) {
+    throw new Error("Failed to load admin dashboard overview.");
+  }
+
+  const statisticsPayload =
+    (await statisticsResponse.json()) as ApiEnvelope<AdminStatisticsResponse>;
+  const payoutsPayload =
+    (await payoutsResponse.json()) as ApiEnvelope<AdminPayout[]>;
+
+  const statistics = statisticsPayload.data;
+  const payouts = payoutsPayload.data;
+
+  return {
     stats: [
       {
-        title: "Platform sessions",
-        value: "128K",
-        change: "+8.2%",
-        detail: "week over week",
+        title: "Total users",
+        value: String(statistics.totalUsers),
+        change: `${statistics.totalPublishedBooks} approved books`,
+        detail: "registered accounts",
         icon: "traffic",
       },
       {
-        title: "Open support tickets",
-        value: "14",
-        change: "-3",
-        detail: "since yesterday",
+        title: "Completed sales",
+        value: String(statistics.totalSales),
+        change: `${payouts.filter((item) => item.status === "REQUESTED").length} awaiting approval`,
+        detail: "orders completed",
         icon: "tickets",
       },
       {
-        title: "Active authors",
-        value: "326",
-        change: "+17",
-        detail: "publishing this month",
+        title: "Gross revenue",
+        value: formatCurrency(statistics.totalGrossRevenue),
+        change: formatCurrency(statistics.totalPlatformRevenue),
+        detail: "platform gross",
         icon: "authors",
       },
       {
-        title: "Service uptime",
-        value: "99.94%",
-        change: "+0.03%",
-        detail: "rolling 30-day window",
+        title: "Platform revenue",
+        value: formatCurrency(statistics.totalPlatformRevenue),
+        change: `${payouts.filter((item) => item.status === "PAID").length} payouts paid`,
+        detail: "fees retained",
         icon: "uptime",
       },
     ],
     approvals: [
-      { label: "Pending article approvals", value: "11" },
-      { label: "Flagged comments", value: "07" },
-      { label: "Billing reviews", value: "03" },
-    ],
-    activity: [
       {
-        id: "activity-1",
-        label: "Ops team approved homepage takeover request",
-        meta: "12 minutes ago",
+        label: "Requested payouts",
+        value: String(payouts.filter((item) => item.status === "REQUESTED").length),
       },
       {
-        id: "activity-2",
-        label: "Three new author invitations were accepted",
-        meta: "47 minutes ago",
+        label: "Approved payouts",
+        value: String(payouts.filter((item) => item.status === "APPROVED").length),
       },
       {
-        id: "activity-3",
-        label: "Spam moderation queue cleared for the morning cycle",
-        meta: "1 hour ago",
+        label: "Paid payouts",
+        value: String(payouts.filter((item) => item.status === "PAID").length),
       },
     ],
-  });
+    activity: payouts.slice(0, 5).map((payout, index) => ({
+      id: payout.id,
+      label: `Payout ${payout.id.slice(0, 8)} is currently ${payout.status.toLowerCase().replaceAll("_", " ")}`,
+      meta: `Recent commerce record ${index + 1}`,
+    })),
+  };
 }

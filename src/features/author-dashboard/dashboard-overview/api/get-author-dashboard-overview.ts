@@ -1,125 +1,170 @@
-import type { AuthorDashboardOverviewData } from "../types";
+import type {
+  AuthorDashboardOverviewData,
+  AuthorStatisticsResponse,
+} from "../types";
 
-export async function getAuthorDashboardOverview(): Promise<AuthorDashboardOverviewData> {
-  return Promise.resolve({
+type ApiEnvelope<T> = {
+  data: T;
+};
+
+type BackendBook = {
+  id: string;
+  title: string;
+  status: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
+  authorEarnings?: number | null;
+};
+
+type BackendBooksResponse = {
+  books: BackendBook[];
+};
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatCompact(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function getLastSevenDaysRevenue(
+  revenueByDay: AuthorStatisticsResponse["revenueByDay"],
+) {
+  const lookup = new Map(revenueByDay.map((item) => [item.date, item.revenue]));
+  const formatter = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+    const iso = date.toISOString().split("T")[0];
+    const revenue = lookup.get(iso) ?? 0;
+
+    return {
+      day: formatter.format(date),
+      value: revenue,
+      tooltip: `${formatter.format(date)} ${formatCurrency(revenue)}`,
+    };
+  });
+}
+
+export async function getAuthorDashboardOverview(
+  accessToken: string,
+): Promise<AuthorDashboardOverviewData> {
+  const [statisticsResponse, booksResponse] = await Promise.all([
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/statistics/author`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    }),
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/books/mine?limit=6`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    }),
+  ]);
+
+  if (!statisticsResponse.ok) {
+    throw new Error("Failed to load author statistics.");
+  }
+
+  if (!booksResponse.ok) {
+    throw new Error("Failed to load author books.");
+  }
+
+  const statisticsPayload =
+    (await statisticsResponse.json()) as ApiEnvelope<AuthorStatisticsResponse>;
+  const booksPayload =
+    (await booksResponse.json()) as ApiEnvelope<BackendBooksResponse>;
+
+  const statistics = statisticsPayload.data;
+  const books = booksPayload.data.books ?? [];
+  const recentRevenue = getLastSevenDaysRevenue(statistics.revenueByDay);
+  const recentTotal = recentRevenue.reduce((sum, item) => sum + item.value, 0);
+  const monthlyRevenue = statistics.revenueByMonth.at(-1)?.revenue ?? 0;
+  const pendingBooks = books.filter((book) =>
+    ["DRAFT", "SUBMITTED", "REJECTED"].includes(book.status),
+  ).length;
+
+  return {
     stats: [
       {
-        title: "Total Sales",
-        subtitle: "Last 7 days",
-        value: "$350K",
-        change: "+10.4%",
-        detail: "Sales",
-        previousLabel: "Previous 7 days ($235)",
+        title: "Total Revenue",
+        subtitle: "All completed payouts",
+        value: formatCurrency(statistics.totalRevenue),
+        change: `${recentRevenue.filter((item) => item.value > 0).length} active days`,
+        detail: "earned",
+        previousLabel: "Based on author payout records",
         accent: "emerald",
         icon: "sales",
       },
       {
         title: "Total Orders",
-        subtitle: "Last 7 days",
-        value: "10.7K",
-        change: "+14.4%",
-        detail: "Order",
-        previousLabel: "Previous 7 days (7.6k)",
+        subtitle: "Completed order items",
+        value: formatCompact(statistics.totalSales),
+        change: `${statistics.totalPublishedBooks} approved books`,
+        detail: "sales",
+        previousLabel: "Pulled from completed order items",
         accent: "emerald",
         icon: "orders",
       },
       {
         title: "Pending & Canceled",
-        subtitle: "Last 7 days",
-        value: "509",
-        change: "+14.4%",
-        detail: "User 204",
-        previousLabel: "Canceled 94",
-        accent: "rose",
+        subtitle: "Books needing attention",
+        value: String(pendingBooks),
+        change: `${books.filter((book) => book.status === "REJECTED").length} rejected`,
+        detail: `${books.filter((book) => book.status === "SUBMITTED").length} submitted`,
+        previousLabel: "Draft, submitted, and rejected books",
+        accent: pendingBooks > 0 ? "rose" : "emerald",
         icon: "pending",
       },
     ],
     weeklyMetrics: [
       {
-        label: "Book Views",
-        value: "52k",
-        detail: "Strongest day this week",
+        label: "Approved Books",
+        value: String(statistics.totalPublishedBooks),
+        detail: "Live approved catalog count",
       },
       {
-        label: "Total Readers",
-        value: "3.5k",
-        detail: "Returning audience",
+        label: "Recent Revenue",
+        value: formatCurrency(recentTotal),
+        detail: "Last 7 days from payout activity",
       },
       {
-        label: "Total Downloads",
-        value: "2.5k",
-        detail: "Across all titles",
+        label: "Monthly Revenue",
+        value: formatCurrency(monthlyRevenue),
+        detail: "Latest month in backend report",
       },
       {
-        label: "Revenue",
-        value: "250k",
-        detail: "Estimated payout value",
+        label: "Tracked Books",
+        value: String(books.length),
+        detail: "Most recent author book records",
       },
     ],
-    chartPoints: [
-      { day: "Sun", value: 18, tooltip: "Sunday 18k" },
-      { day: "Mon", value: 31, tooltip: "Monday 31k" },
-      { day: "Tue", value: 22, tooltip: "Tuesday 22k" },
-      { day: "Wed", value: 37, tooltip: "Wednesday 37k" },
-      { day: "Thu", value: 24, tooltip: "Thursday 24k" },
-      { day: "Fri", value: 36, tooltip: "Friday 36k" },
-      { day: "Sat", value: 21, tooltip: "Saturday 21k" },
-    ],
-    products: [
-      {
-        id: "product-1",
-        title: "The Silent Harbor",
-        views: 1024,
-        sales: 104,
-        status: "Published",
-        revenue: "$999.00",
-        coverTone: "from-[#cb5f2f] via-[#e38f54] to-[#6a221a]",
-      },
-      {
-        id: "product-2",
-        title: "Whispers in the Wind",
-        views: 980,
-        sales: 87,
-        status: "Draft",
-        revenue: "$850.00",
-        coverTone: "from-[#9e3826] via-[#e5a04c] to-[#8a2b1c]",
-      },
-      {
-        id: "product-3",
-        title: "Echoes of the Past",
-        views: 1150,
-        sales: 123,
-        status: "Published",
-        revenue: "$1,120.00",
-        coverTone: "from-[#ce6b31] via-[#efb55b] to-[#773228]",
-      },
-      {
-        id: "product-4",
-        title: "Midnight Sonata",
-        views: 890,
-        sales: 95,
-        status: "Published",
-        revenue: "$760.00",
-        coverTone: "from-[#8e2c34] via-[#cb6d54] to-[#4d1d36]",
-      },
-      {
-        id: "product-5",
-        title: "Beneath the Starlight",
-        views: 1120,
-        sales: 110,
-        status: "Archived",
-        revenue: "$1,050.00",
-        coverTone: "from-[#cb7637] via-[#f0c46c] to-[#68412a]",
-      },
-      {
-        id: "product-6",
-        title: "The Last Ember",
-        views: 970,
-        sales: 101,
-        status: "Draft",
-        revenue: "$880.00",
-        coverTone: "from-[#aa382d] via-[#e57e49] to-[#712820]",
-      },
-    ],
-  });
+    chartPoints: recentRevenue,
+    products: books.map((book, index) => ({
+      id: book.id,
+      title: book.title,
+      views: 0,
+      sales: 0,
+      status:
+        book.status === "APPROVED"
+          ? "Published"
+          : book.status === "DRAFT"
+            ? "Draft"
+            : "Archived",
+      revenue: formatCurrency(book.authorEarnings ?? 0),
+      coverTone: [
+        "from-[#cb5f2f] via-[#e38f54] to-[#6a221a]",
+        "from-[#9e3826] via-[#e5a04c] to-[#8a2b1c]",
+        "from-[#ce6b31] via-[#efb55b] to-[#773228]",
+        "from-[#8e2c34] via-[#cb6d54] to-[#4d1d36]",
+        "from-[#cb7637] via-[#f0c46c] to-[#68412a]",
+        "from-[#aa382d] via-[#e57e49] to-[#712820]",
+      ][index % 6],
+    })),
+  };
 }

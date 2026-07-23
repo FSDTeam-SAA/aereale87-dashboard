@@ -38,3 +38,17 @@ export type AuthorDashboardOverviewData = {
   products: AuthorProduct[];
   isFoundingAuthor?: boolean;
 };
+
+export type AuthorStatisticsResponse = {
+  totalPublishedBooks: number;
+  totalSales: number;
+  totalRevenue: number;
+  revenueByDay: Array<{
+    date: string;
+    revenue: number;
+  }>;
+  revenueByMonth: Array<{
+    month: string;
+    revenue: number;
+  }>;
+};

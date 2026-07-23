@@ -26,6 +26,11 @@ const adminNavItems: DashboardNavItem[] = [
     icon: "users",
   },
   {
+    title: "Payouts",
+    href: "/admin-dashboard/payouts",
+    icon: "wallet",
+  },
+  {
     title: "Subscribers",
     href: "/admin-dashboard/subscribers",
     icon: "mail",
