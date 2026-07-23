@@ -1,429 +1,666 @@
-import { ChevronDown, CircleHelp, FileUp, Plus, Upload } from "lucide-react";
+"use client";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { FormEvent, useEffect, useCallback, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { BookOpen, FileAudio, FileText, Save, Package } from "lucide-react";
+import { toast } from "sonner";
 
-function SectionLabel({
-  label,
-  required = false,
-}: {
-  label: string;
-  required?: boolean;
-}) {
-  return (
-    <div className="text-base font-bold text-teal-950">
-      {label}
-      {required ? <span className="text-red-600"> *</span> : null}
-    </div>
-  );
-}
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Calculator } from "lucide-react";
+import { Input } from "@/components/ui/input";
 
-function SoftInput({ value }: { value: string }) {
-  return (
-    <div className="flex h-12 items-center overflow-hidden border border-stone-300 bg-orange-50 px-3 py-2.5 text-base text-neutral-500">
-      {value}
-    </div>
-  );
-}
+type FormatKey = "EBOOK" | "AUDIOBOOK" | "HARDCOVER" | "PAPERBACK";
+type PrintFormatKey = Extract<FormatKey, "HARDCOVER" | "PAPERBACK">;
 
-function SoftTextarea({ value }: { value: string }) {
-  return (
-    <div className="flex h-52 items-start overflow-hidden border border-stone-300 bg-orange-50 p-3 text-base leading-6 text-neutral-500">
-      {value}
-    </div>
-  );
-}
-
-function SelectField({ value }: { value: string }) {
-  return (
-    <div className="flex items-center justify-between border border-stone-300 bg-orange-50 p-3">
-      <span className="text-base text-teal-950">{value}</span>
-      <ChevronDown className="size-5 text-black" strokeWidth={1.8} />
-    </div>
-  );
-}
-
-function Token({ label }: { label: string }) {
-  return (
-    <div className="flex h-8 flex-1 items-center gap-2 bg-white px-3 py-1.5 text-sm text-zinc-900">
-      <span>{label}</span>
-      <span className="text-stone-500">x</span>
-    </div>
-  );
-}
-
-function UploadDropzone({
-  title,
-  subtitle,
-  tall = false,
-}: {
+type EditBook = {
   title: string;
-  subtitle: string;
-  tall?: boolean;
-}) {
+  description: string | null;
+  isbn: string | null;
+  category: string | null;
+  tags: string[];
+  language: string | null;
+  ageGroup: string | null;
+  formats: Array<{ formatType: FormatKey; listPrice: number; pageCount?: number; trimSize?: string }>;
+  status: string;
+};
+
+type BookTypeOption = { value: string; label: string; trimSku: string };
+type SkuOption = { value: string; label?: string; sku: string; minPage?: number; maxPage?: number };
+
+type SpecificationOptions = {
+  bookTypes: BookTypeOption[];
+  interiorColors: SkuOption[];
+  printQualities: SkuOption[];
+  bindings: { paperback: SkuOption[]; hardcover: SkuOption[] };
+  paperTypes: SkuOption[];
+  laminations: SkuOption[];
+  linenColors: SkuOption[];
+  foilColors: SkuOption[];
+  printInsideCover: SkuOption[];
+};
+
+type AvailableSpecificationOptions = Omit<SpecificationOptions, "bindings"> & {
+  bindings: SkuOption[];
+  count?: number;
+  valid?: boolean;
+  validPageRange?: { minPage: number; maxPage: number } | null;
+};
+
+type MatchResult = {
+  found: boolean;
+  sku: string | null;
+  minPage: number | null;
+  maxPage: number | null;
+  pricing: {
+    basePriceUSD: number;
+    perPagePriceUSD: number;
+  } | null;
+};
+
+type PrintFileValidationResult = {
+  valid: boolean;
+  message?: string;
+  podPackageId?: string;
+  interiorPageCount?: number;
+  coverDimensions?: { width: string; height: string; unit: string };
+};
+
+const formatLabels: Record<FormatKey, string> = {
+  EBOOK: "eBook",
+  AUDIOBOOK: "Audiobook",
+  HARDCOVER: "Hardcover",
+  PAPERBACK: "Paperback",
+};
+
+export function AuthorUploadContentPage({ accessToken, isFoundingAuthor }: { accessToken: string; isFoundingAuthor?: boolean }) {
+  const router = useRouter();
+  const bookId = useSearchParams().get("bookId");
+  const [book, setBook] = useState<EditBook | null>(null);
+  const [formats, setFormats] = useState<FormatKey[]>(["EBOOK"]);
+  const [pending, setPending] = useState(false);
+  const [specOptions, setSpecOptions] = useState<SpecificationOptions | null>(null);
+  const [matchedSpecs, setMatchedSpecs] = useState<Record<string, MatchResult>>({});
+  const [fileValidationPending, setFileValidationPending] = useState<Record<string, boolean>>({});
+  const [fileValidations, setFileValidations] = useState<Record<string, PrintFileValidationResult>>({});
+
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/print/specifications`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message);
+        setSpecOptions(unwrapApiData<SpecificationOptions>(payload));
+      })
+      .catch((error: Error) => toast.error(error.message || "Unable to load print specifications."));
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (!bookId) return;
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/books/${bookId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message);
+        setBook(payload.data);
+        setFormats(payload.data.formats.map((format: { formatType: FormatKey }) => format.formatType));
+      })
+      .catch((error: Error) => toast.error(error.message || "Unable to load book."));
+  }, [accessToken, bookId]);
+
+  function toggleFormat(format: FormatKey) {
+    setFormats((current) => (current.includes(format) ? current.filter((item) => item !== format) : [...current, format]));
+  }
+
+  const handleSpecMatch = useCallback((format: string, result: MatchResult) => {
+    setMatchedSpecs((prev) => ({ ...prev, [format]: result }));
+    setFileValidations((prev) => ({ ...prev, [format]: { valid: false, message: "Validate files after choosing print options." } }));
+  }, []);
+
+  async function validatePrintFiles(format: PrintFormatKey, button: HTMLButtonElement) {
+    const form = button.form;
+    if (!form) return;
+    const source = new FormData(form);
+    const interiorPdf = source.get("interiorPdf");
+    const coverPdf = source.get("coverPdf");
+    const match = matchedSpecs[format];
+    if (!match?.sku) return toast.error("Choose a valid print configuration before validating files.");
+    if (!(interiorPdf instanceof File) || !interiorPdf.size || !(coverPdf instanceof File) || !coverPdf.size) {
+      return toast.error("Choose both Interior PDF and Cover PDF before validation.");
+    }
+
+    const body = new FormData();
+    body.set("interiorPdf", interiorPdf);
+    body.set("coverPdf", coverPdf);
+    body.set("podPackageId", match.sku);
+    body.set("pageCount", String(source.get(`${format}-pages`) || ""));
+
+    setFileValidationPending((prev) => ({ ...prev, [format]: true }));
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/books/validate-print-files`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body,
+    });
+    const payload = await response.json();
+    const data = unwrapApiData<PrintFileValidationResult>(payload);
+    setFileValidationPending((prev) => ({ ...prev, [format]: false }));
+    setFileValidations((prev) => ({ ...prev, [format]: data }));
+    if (!response.ok || !data.valid) return toast.error(data.message || payload.message || "Print files did not validate.");
+    toast.success("Print files validated.");
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const source = new FormData(event.currentTarget);
+    if (!formats.length) return toast.error("Select at least one book format.");
+    const body = new FormData();
+    ["title", "description", "isbn", "category", "language", "ageGroup"].forEach((key) => {
+      const value = source.get(key);
+      if (value) body.set(key, value);
+    });
+    body.set(
+      "tags",
+      JSON.stringify(
+        String(source.get("tags") || "")
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+      ),
+    );
+    body.set(
+      "formats",
+      JSON.stringify(
+        formats.map((formatType) => ({
+          formatType,
+          listPrice: Number(source.get(`${formatType}-price`) || 0),
+          pageCount: ["HARDCOVER", "PAPERBACK"].includes(formatType) ? Number(source.get(`${formatType}-pages`) || 0) : undefined,
+          trimSize: ["HARDCOVER", "PAPERBACK"].includes(formatType) ? String(source.get(`${formatType}-bookType`) || "US Trade") : undefined,
+        })),
+      ),
+    );
+
+    const fileFields = ["bookCover", "ebook", "audiobook", "interiorPdf", "coverPdf"] as const;
+    fileFields.forEach((field) => {
+      const file = source.get(field);
+      if (file instanceof File && file.size > 0) body.set(field, file);
+    });
+
+    const printFormat = formats.find((format): format is PrintFormatKey => format === "HARDCOVER" || format === "PAPERBACK");
+    const hasPrint = Boolean(printFormat);
+    if (hasPrint) {
+      const interiorPdf = source.get("interiorPdf");
+      const coverPdf = source.get("coverPdf");
+      if (!bookId && (!(interiorPdf instanceof File) || !interiorPdf.size || !(coverPdf instanceof File) || !coverPdf.size)) {
+        return toast.error("Print editions require both interior and cover PDF files.");
+      }
+      const selectedPrintFormat = printFormat as PrintFormatKey;
+      const matchResult = matchedSpecs[selectedPrintFormat];
+      const fileValidation = fileValidations[selectedPrintFormat];
+      if (!fileValidation?.valid) {
+        return toast.error("Validate the interior and cover PDFs before saving.");
+      }
+      const paper = parsePaperSelection(String(source.get(`${selectedPrintFormat}-paperType`) || ""));
+      body.set(
+        "printEdition",
+        JSON.stringify({
+          enabled: true,
+          bookType: String(source.get(`${selectedPrintFormat}-bookType`) || "US Trade"),
+          trimSize: String(source.get(`${selectedPrintFormat}-bookType`) || "US Trade"),
+          interiorColor: String(source.get(`${selectedPrintFormat}-interiorColor`) || "Black & White"),
+          printQuality: String(source.get(`${selectedPrintFormat}-printQuality`) || "Standard"),
+          bindingType: String(source.get(`${selectedPrintFormat}-binding`) || "Perfect"),
+          paperType: paper.paperType,
+          interiorPpi: paper.interiorPpi,
+          coverFinish: String(source.get(`${selectedPrintFormat}-lamination`) || "Gloss"),
+          linenColor: String(source.get(`${selectedPrintFormat}-linenColor`) || "X"),
+          foilColor: String(source.get(`${selectedPrintFormat}-foilColor`) || "X"),
+          printInsideCover: String(source.get(`${selectedPrintFormat}-printInsideCover`) || "No"),
+          podPackageId: matchResult?.sku || "",
+          authorProfit: 0,
+          sellingPrice: Number(source.get(`${selectedPrintFormat}-price`) || 0),
+        }),
+      );
+    }
+
+    setPending(true);
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/books${bookId ? `/${bookId}` : ""}`, {
+      method: bookId ? "PUT" : "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body,
+    });
+    const payload = await response.json();
+    setPending(false);
+    if (!response.ok) return toast.error(payload.message || "Unable to save book.");
+    toast.success(bookId ? "Book updated." : "Draft book created.");
+    router.push("/author-dashboard/books");
+    router.refresh();
+  }
+
   return (
-    <div
-      className={`relative overflow-hidden border border-stone-300 bg-orange-50 ${
-        tall ? "h-60" : "h-24"
-      }`}
-    >
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-center">
-        <Upload className="size-5 text-orange-400" strokeWidth={2} />
-        <div className="text-base leading-5 text-orange-400">{title}</div>
-        <div className="text-sm leading-4 text-neutral-500">{subtitle}</div>
+    <form key={`${bookId || "new"}-${book?.title || "loading"}`} onSubmit={submit} className="space-y-6">
+      <div>
+        <p className="text-sm font-semibold uppercase tracking-wider text-[#a88922]">Author workspace</p>
+        <h1 className="mt-1 text-3xl font-bold text-slate-950">{bookId ? "Edit book" : "List a new book"}</h1>
+        <p className="mt-2 text-slate-500">Save the listing as a draft, then submit it for review from My Books.</p>
       </div>
-    </div>
-  );
-}
-
-function CompactSelect({ placeholder }: { placeholder: string }) {
-  return (
-    <div className="flex items-center justify-between border border-stone-300 bg-stone-100 px-4 py-3">
-      <span className="text-sm text-neutral-500">{placeholder}</span>
-      <ChevronDown className="size-4 text-neutral-500" strokeWidth={1.8} />
-    </div>
-  );
-}
-
-function CompactInput({ placeholder }: { placeholder: string }) {
-  return (
-    <div className="flex h-11 items-center overflow-hidden border border-stone-300 bg-stone-100 px-4 text-sm text-neutral-500">
-      {placeholder}
-    </div>
-  );
-}
-
-function QuickInfoCard() {
-  return (
-    <div className="flex items-start gap-3 border border-stone-200 bg-white p-4">
-      <div className="mt-0.5 flex size-8 items-center justify-center rounded-full border border-stone-300 text-green-900">
-        <CircleHelp className="size-4" strokeWidth={1.8} />
-      </div>
-      <div className="space-y-1">
-        <div className="text-base font-medium leading-6 text-zinc-900">Quick Info Card</div>
-        <div className="text-xs leading-5 text-stone-500">
-          Learn about royalties, distribution
-          <br />
-          options, and pricing structure.
-        </div>
-        <div className="flex items-center gap-1 pt-2.5 text-sm font-medium text-green-900">
-          <span>View Author Program Guide</span>
-          <Plus className="size-3 rotate-45" strokeWidth={2} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ContentHeader() {
-  return (
-    <div className="flex items-center justify-between border border-stone-200 bg-white px-4 py-2">
-      <div className="text-2xl font-bold leading-7 text-zinc-900">Upload Content</div>
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          className="flex items-center justify-center border border-orange-400 bg-white px-6 py-3 text-base font-bold text-orange-400"
-        >
-          Save to draft
-        </button>
-        <button
-          type="button"
-          className="flex items-center justify-center bg-orange-400 px-6 py-3 text-base font-bold text-white"
-        >
-          Submit For Review
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function DistributionOption({
-  title,
-  percentage,
-  description,
-  active = false,
-}: {
-  title: string;
-  percentage: string;
-  description: string;
-  active?: boolean;
-}) {
-  return (
-    <div
-      className={`flex-1 p-5 ${
-        active
-          ? "bg-stone-100 outline outline-2 outline-offset-[-2px] outline-orange-400"
-          : "bg-white outline outline-2 outline-offset-[-2px] outline-stone-300"
-      }`}
-    >
-      <div className="flex flex-col gap-2">
-        <div className="flex items-start justify-between">
-          <div className="text-2xl font-semibold leading-7 text-gray-800">{title}</div>
-          <div
-            className={`flex size-5 items-center justify-center rounded-full outline outline-2 outline-offset-[-2px] ${
-              active ? "outline-orange-400" : "outline-stone-200"
-            }`}
-          >
-            <div className={`size-2.5 rounded-full ${active ? "bg-orange-400" : "opacity-0 bg-orange-400"}`} />
-          </div>
-        </div>
-        <div className={`text-2xl font-bold leading-7 ${active ? "text-orange-400" : "text-neutral-800"}`}>
-          {percentage}
-        </div>
-        <div className="text-base leading-5 text-neutral-500">{description}</div>
-      </div>
-    </div>
-  );
-}
-
-function RoyaltyPreview() {
-  return (
-    <div className="bg-green-900 p-6 shadow-[0_4px_6px_-4px_rgba(0,0,0,0.10),0_20px_25px_-5px_rgba(0,0,0,0.18)]">
-      <div className="flex flex-col gap-6">
-        <div className="text-lg font-semibold leading-7 text-white">Royalty Preview</div>
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between border-b border-white/10 py-2">
-            <span className="text-sm leading-4 text-white/80">List Price</span>
-            <span className="text-base leading-5 text-white">$9.99</span>
-          </div>
-          <div className="flex items-center justify-between border-b border-white/10 py-2">
-            <span className="text-sm leading-4 text-white/80">Royalty Percentage</span>
-            <span className="text-base leading-5 text-amber-400">65%</span>
-          </div>
-          <div className="flex items-center justify-between border-b border-white/10 py-2">
-            <span className="text-sm leading-4 text-white/80">Wonder Emporium Share</span>
-            <span className="text-base leading-5 text-white">$3.50</span>
-          </div>
-          <div className="flex items-center justify-between pt-4">
-            <span className="text-base font-bold leading-5 text-white">Author Earnings</span>
-            <span className="text-3xl font-bold leading-9 text-amber-400">$6.49</span>
-          </div>
-          <div className="text-right text-sm leading-4 text-white/60">per copy sold</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function AuthorUploadContentPage() {
-  return (
-    <div className="space-y-3">
-      <ContentHeader />
-
-      <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
-        <Card className="flex-1 rounded-none bg-white py-0 shadow-none ring-1 ring-stone-300">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-8">
-              <div className="flex flex-col gap-6">
-                <h2 className="text-2xl font-bold leading-7 text-zinc-800">Book Information</h2>
-
-                <div className="space-y-4">
-                  <div className="space-y-3">
-                    <SectionLabel label="Book Title" required />
-                    <SoftInput value="The Architecture of Leadership" />
-                  </div>
-
-                  <div className="space-y-3">
-                    <SectionLabel label="Book Description" required />
-                    <SoftTextarea value="Write a compelling description for readers and reviewers." />
-                  </div>
-
-                  <div className="space-y-3">
-                    <SectionLabel label="Tags / Keywords" />
-                    <SoftInput value="leadership, business, strategy, growth" />
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium leading-5 text-zinc-900">Keywords & Tags</div>
-                    <div className="flex min-h-12 flex-col gap-2 border border-stone-300 bg-stone-100 p-3">
-                      <div className="flex gap-2">
-                        <Token label="Keyword 01" />
-                        <Token label="Keyword 01" />
-                        <Token label="Keyword 01" />
-                        <Token label="Keyword 01" />
-                      </div>
-                      <div className="text-sm text-neutral-500">Add a keyword...</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-6">
-                <h2 className="text-2xl font-bold leading-7 text-zinc-800">Publication Details</h2>
-
-                <div className="space-y-5">
-                  <div className="space-y-3">
-                    <SectionLabel label="Author Name" required />
-                    <SoftInput value="Eleanor Vance" />
-                  </div>
-
-                  <div className="space-y-3">
-                    <SectionLabel label="ISBN (Optional)" />
-                    <SoftInput value="e.g. 978-3-16-148410-0" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-5">
-                <div className="space-y-3">
-                  <SectionLabel label="Book Category" required />
-                  <SelectField value="Select category" />
-                </div>
-
-                <div className="grid gap-5 md:grid-cols-2">
-                  <div className="space-y-3">
-                    <SectionLabel label="Language" required />
-                    <SelectField value="English" />
-                  </div>
-                  <div className="space-y-3">
-                    <SectionLabel label="Age Group" required />
-                    <SelectField value="Adult" />
-                  </div>
-                </div>
-
-                <QuickInfoCard />
-              </div>
+      <div className="grid gap-6">
+        <Card className="rounded-none bg-white">
+          <CardContent className="space-y-5 p-5">
+            <h2 className="flex items-center gap-2 text-xl font-bold">
+              <BookOpen className="size-5" />
+              Book information
+            </h2>
+            <Field label="Book title" name="title" defaultValue={book?.title} required />
+            <TextArea label="Description" name="description" defaultValue={book?.description || ""} required />
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="ISBN (optional)" name="isbn" defaultValue={book?.isbn || ""} />
+              <Field label="Category" name="category" defaultValue={book?.category || ""} required />
+              <Field label="Language" name="language" defaultValue={book?.language || "English"} required />
+              <Field label="Age group" name="ageGroup" defaultValue={book?.ageGroup || "Adult"} required />
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="flex-1 rounded-none bg-white py-0 shadow-none ring-1 ring-stone-300">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-6">
-              <h2 className="text-2xl font-bold leading-7 text-zinc-800">Upload Book Image</h2>
-
-              <div className="space-y-3">
-                <SectionLabel label="Book Cover" required />
-                <div className="relative h-60 overflow-hidden border border-stone-300 bg-orange-50">
-                  <div className="absolute right-[78px] top-0 flex size-60 items-center justify-center">
-                    <div className="h-[122px] w-[94px] bg-[linear-gradient(135deg,#d56a37_0%,#f3b24a_45%,#b8463a_45%,#b8463a_62%,#5e2d4a_62%,#d96e54_100%)] shadow-[0_8px_18px_rgba(0,0,0,0.18)]" />
-                  </div>
-                  <button
-                    type="button"
-                    className="absolute bottom-[25px] left-3 flex h-9 items-center gap-1 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-neutral-500"
-                  >
-                    <FileUp className="size-4" strokeWidth={1.8} />
-                    Browse
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-5">
-                <div className="space-y-3">
-                  <SectionLabel label="Upload Audiobook" />
-                  <UploadDropzone
-                    title="Drag & Drop Upload Audiobook"
-                    subtitle="Supported Formats: PDF, DOCX, EPUB"
-                  />
-                </div>
-                <div className="space-y-3">
-                  <SectionLabel label="Page Count" required />
-                  <SoftInput value="320" />
-                </div>
-              </div>
-
-              <div className="space-y-5">
-                <div className="space-y-3">
-                  <SectionLabel label="Upload eBook" />
-                  <UploadDropzone
-                    title="Drag & Drop Upload eBook"
-                    subtitle="Supported Formats: PDF, DOCX, EPUB"
-                  />
-                </div>
-                <div className="space-y-3">
-                  <SectionLabel label="Page Count" required />
-                  <SoftInput value="320" />
-                </div>
-              </div>
-
-              <div className="space-y-5">
-                <div className="space-y-3">
-                  <SectionLabel label="Upload Hardcover" />
-                  <UploadDropzone
-                    title="Drag & Drop Upload Hardcover"
-                    subtitle="Supported Formats: PDF, DOCX, EPUB"
-                  />
-                </div>
-                <div className="grid gap-6 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <div className="text-sm text-neutral-800">
-                      Trim Size <span className="text-red-900">*</span>
-                    </div>
-                    <CompactSelect placeholder="Select trim size..." />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="text-sm text-neutral-800">
-                      Page Count <span className="text-red-900">*</span>
-                    </div>
-                    <CompactInput placeholder="e.g. 320" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-5">
-                <div className="space-y-3">
-                  <SectionLabel label="Upload Paperback" />
-                  <UploadDropzone
-                    title="Drag & Drop Upload Paperback"
-                    subtitle="Supported Formats: PDF, DOCX, EPUB"
-                  />
-                </div>
-                <div className="grid gap-6 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <div className="text-sm text-neutral-800">
-                      Trim Size <span className="text-red-900">*</span>
-                    </div>
-                    <CompactSelect placeholder="Select trim size..." />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="text-sm text-neutral-800">
-                      Page Count <span className="text-red-900">*</span>
-                    </div>
-                    <CompactInput placeholder="e.g. 320" />
-                  </div>
-                </div>
-              </div>
-            </div>
+            <Field label="Tags (comma separated)" name="tags" defaultValue={book?.tags.join(", ")} />
+            <FileField label="Book cover (used for all formats)" name="bookCover" accept="image/*" required={!bookId} />
           </CardContent>
         </Card>
       </div>
-
-      <Card className="rounded-none bg-white py-0 shadow-none ring-1 ring-stone-200">
-        <CardContent className="flex flex-col gap-6 p-4">
-          <div className="flex items-center gap-2">
-            <div className="text-2xl font-bold leading-7 text-zinc-900">
-              Pricing & Distribution Path
-            </div>
+      <Card className="rounded-none bg-white">
+        <CardContent className="space-y-5 p-5">
+          <h2 className="flex items-center gap-2 text-xl font-bold">
+            <FileText className="size-5" />
+            Formats and pricing
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {(Object.keys(formatLabels) as FormatKey[]).map((format) => (
+              <label key={format} className="flex cursor-pointer items-center gap-2 border border-slate-200 p-3">
+                <input type="checkbox" checked={formats.includes(format)} onChange={() => toggleFormat(format)} />
+                {formatLabels[format]}
+              </label>
+            ))}
           </div>
-
-          <div className="flex flex-col gap-8">
-            <div className="space-y-3">
-              <SectionLabel label="List Price (USD)" required />
-              <SoftInput value="$ 9.99" />
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <div className="text-base font-bold leading-5 text-neutral-800">
-                Distribution Path <span className="text-red-600">*</span>
+          <div className="grid gap-4 xl:grid-cols-2">
+            {formats.map((format) => (
+              <div key={format} className="space-y-4 rounded border border-slate-200 p-5 bg-slate-50/50">
+                <h3 className="font-bold text-lg text-slate-800">{formatLabels[format]} Details</h3>
+                {format === "EBOOK" && <FileField label="eBook file (.pdf, .epub)" name="ebook" accept=".pdf,.epub" />}
+                {format === "AUDIOBOOK" && <FileField label="Audiobook file" name="audiobook" accept="audio/*" />}
+                {["HARDCOVER", "PAPERBACK"].includes(format) && (
+                  <>
+                    <p className="rounded bg-amber-50 p-3 text-sm text-amber-900 border border-amber-200">
+                      Print editions require print-ready interior and cover PDF files.
+                    </p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <FileField label="Interior PDF" name="interiorPdf" accept="application/pdf" />
+                      <FileField label="Cover PDF" name="coverPdf" accept="application/pdf" />
+                    </div>
+                    <PrintSpecSelector format={format as PrintFormatKey} accessToken={accessToken} specOptions={specOptions} onMatch={handleSpecMatch} defaultPageCount={book?.formats.find((item) => item.formatType === format)?.pageCount} />
+                    <div className="rounded border border-slate-200 bg-white p-4">
+                      <button
+                        type="button"
+                        disabled={fileValidationPending[format]}
+                        onClick={(event) => validatePrintFiles(format as PrintFormatKey, event.currentTarget)}
+                        className="inline-flex h-10 items-center gap-2 rounded-md bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        {fileValidationPending[format] ? "Validating..." : "Validate print files"}
+                      </button>
+                      {fileValidations[format]?.valid && (
+                        <p className="mt-3 text-sm text-emerald-700">
+                          Files validated. Cover size: {fileValidations[format].coverDimensions?.width} x {fileValidations[format].coverDimensions?.height} {fileValidations[format].coverDimensions?.unit}.
+                        </p>
+                      )}
+                      {fileValidations[format] && !fileValidations[format].valid && (
+                        <p className="mt-3 text-sm text-red-700">{fileValidations[format].message || "Files are not validated yet."}</p>
+                      )}
+                    </div>
+                  </>
+                )}
+                <div className="grid gap-4 sm:grid-cols-2 items-end">
+                  <Field label="List price (USD)" name={`${format}-price`} type="number" step="0.01" min="0" defaultValue={book?.formats.find((item) => item.formatType === format)?.listPrice ?? ""} required />
+                </div>
               </div>
-              <div className="flex flex-col gap-4 xl:flex-row">
-                <DistributionOption
-                  title="WE Exclusive"
-                  percentage="65%"
-                  description="Maximum earnings. Your book is sold exclusively through the Wonder Emporium marketplace."
-                  active
-                />
-                <DistributionOption
-                  title="Wide Distribution"
-                  percentage="45%"
-                  description="Expanded reach. Distribute to Amazon, Barnes & Noble, and independent bookstores globally."
-                />
-              </div>
-            </div>
+            ))}
           </div>
-
-          <RoyaltyPreview />
         </CardContent>
       </Card>
+      <Card className="rounded-none bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)]">
+        <CardHeader className="px-5 py-4 border-b border-[#e7e1d5]">
+          <CardTitle className="flex items-center gap-2 text-[18px] font-bold text-[#23272e]">
+            <Calculator className="size-5 text-[#cb9f10]" />
+            Royalty Calculator
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-5">
+          <RoyaltyCalculator isFoundingAuthor={isFoundingAuthor} />
+        </CardContent>
+      </Card>
+      <button
+        disabled={pending || (book != null && !["DRAFT", "REJECTED"].includes(book.status))}
+        className="inline-flex h-12 items-center gap-2 rounded-md bg-[#cfaf45] px-6 font-semibold text-white hover:bg-[#b79731] disabled:opacity-50"
+      >
+        <Save className="size-4" />
+        {pending ? "Saving..." : bookId ? "Save changes" : "Create draft"}
+      </button>
+    </form>
+  );
+}
+
+function Field({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <label className="block space-y-2">
+      <span className="text-sm font-medium text-slate-800">{label}</span>
+      <input {...props} className="h-11 w-full border border-slate-300 bg-slate-50 px-3 outline-none focus:border-[#cfaf45]" />
+    </label>
+  );
+}
+
+function TextArea({ label, ...props }: { label: string } & React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <label className="block space-y-2">
+      <span className="text-sm font-medium text-slate-800">{label}</span>
+      <textarea {...props} rows={5} className="w-full border border-slate-300 bg-slate-50 p-3 outline-none focus:border-[#cfaf45]" />
+    </label>
+  );
+}
+
+function FileField({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <label className="block space-y-2">
+      <span className="flex items-center gap-2 text-sm font-medium text-slate-800">
+        <FileAudio className="size-4" />
+        {label}
+      </span>
+      <input type="file" {...props} className="block w-full border border-dashed border-slate-300 bg-slate-50 p-3 text-sm" />
+    </label>
+  );
+}
+
+function PrintSpecSelector({
+  format,
+  accessToken,
+  specOptions,
+  onMatch,
+  defaultPageCount,
+}: {
+  format: PrintFormatKey;
+  accessToken: string;
+  specOptions: SpecificationOptions | null;
+  onMatch: (format: string, result: MatchResult) => void;
+  defaultPageCount?: number;
+}) {
+  const [bookType, setBookType] = useState("");
+  const [pageCount, setPageCount] = useState(defaultPageCount ? String(defaultPageCount) : "");
+  const [availableOptions, setAvailableOptions] = useState<AvailableSpecificationOptions | null>(null);
+  const [interiorColor, setInteriorColor] = useState("");
+  const [printQuality, setPrintQuality] = useState("");
+  const [binding, setBinding] = useState("");
+  const [paperType, setPaperType] = useState("");
+  const [lamination, setLamination] = useState("");
+  const [linenColor, setLinenColor] = useState("X");
+  const [foilColor, setFoilColor] = useState("X");
+  const [printInsideCover, setPrintInsideCover] = useState("No");
+  const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
+
+  const availableBindings = useMemo(() => {
+    if (availableOptions?.bindings?.length) return availableOptions.bindings;
+    if (!specOptions?.bindings) return [];
+    return format === "HARDCOVER" ? (specOptions.bindings.hardcover ?? []) : (specOptions.bindings.paperback ?? []);
+  }, [availableOptions, specOptions, format]);
+
+  const bookTypes = useMemo(() => specOptions?.bookTypes?.map((bt) => bt.value) ?? [], [specOptions]);
+  const bookTypeLabels = useMemo(
+    () => Object.fromEntries((specOptions?.bookTypes ?? []).map((bookType) => [bookType.value, bookType.label])),
+    [specOptions],
+  );
+  const selectedBookType = bookType || bookTypes[0] || "";
+  const interiorColors = availableOptions?.interiorColors?.map((c) => c.value) ?? [];
+  const printQualities = availableOptions?.printQualities?.map((q) => q.value) ?? [];
+  const paperTypes = availableOptions?.paperTypes?.map((p) => p.value) ?? [];
+  const laminations = availableOptions?.laminations?.map((l) => l.value) ?? [];
+  const linenColors = availableOptions?.linenColors?.map((c) => c.value) ?? [];
+  const foilColors = availableOptions?.foilColors?.map((f) => f.value) ?? [];
+  const printInsideCoverOptions = availableOptions?.printInsideCover?.map((f) => f.value) ?? [];
+
+  useEffect(() => {
+    if (!specOptions || !selectedBookType || !pageCount) return;
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/print/specifications/available`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ format, bookType: selectedBookType, pageCount: Number(pageCount) }),
+    })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message);
+        const data = unwrapApiData<AvailableSpecificationOptions>(payload);
+        setAvailableOptions(data);
+        setInteriorColor(data.interiorColors?.[0]?.value || "");
+        setPrintQuality(data.printQualities?.[0]?.value || "");
+        setBinding(data.bindings?.[0]?.value || "");
+        setPaperType(data.paperTypes?.[0]?.value || "");
+        setLamination(data.laminations?.[0]?.value || "");
+        setLinenColor("X");
+        setFoilColor("X");
+        setPrintInsideCover(data.printInsideCover?.[0]?.value || "No");
+        setMatchResult(null);
+      })
+      .catch(() => setAvailableOptions(null));
+  }, [specOptions, selectedBookType, pageCount, format, accessToken]);
+
+  const isLinenWrap = binding === "Linen Wrap";
+
+  const allSelectionsReady = selectedBookType && pageCount && interiorColor && printQuality && binding && paperType && lamination;
+
+  useEffect(() => {
+    if (!specOptions || !allSelectionsReady) return;
+
+    const fetchMatch = async () => {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/print/match`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            bookType: selectedBookType,
+            pageCount: Number(pageCount),
+            interiorColor,
+            printQuality,
+            bind: binding,
+            paperType,
+            interiorPpi: parsePaperSelection(paperType).interiorPpi,
+            lamination,
+            linenColor,
+            foilColor,
+            printInsideCover,
+          }),
+        });
+        const payload = await response.json();
+        const data = unwrapApiData<MatchResult>(payload);
+        if (response.ok && data) {
+          setMatchResult(data);
+          onMatch(format, data);
+        }
+      } catch {
+        setMatchResult(null);
+        onMatch(format, { found: false, sku: null, minPage: null, maxPage: null, pricing: null });
+      }
+    };
+
+    fetchMatch();
+  }, [specOptions, allSelectionsReady, selectedBookType, pageCount, interiorColor, printQuality, binding, paperType, lamination, linenColor, foilColor, printInsideCover, format, accessToken, onMatch]);
+
+  if (!specOptions) {
+    return (
+      <div className="rounded border border-slate-200 bg-white p-4">
+        <p className="text-sm text-slate-400">Loading print specifications...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <SpecSelectField label="Book type / trim" name={`${format}-bookType`} options={bookTypes} labels={bookTypeLabels} value={selectedBookType} onChange={setBookType} />
+        <Field label="Page count" name={`${format}-pages`} type="number" min="1" value={pageCount} onChange={(event) => setPageCount(event.target.value)} required />
+      </div>
+
+      {availableOptions?.valid === false && (
+        <div className="rounded border border-red-200 bg-red-50 p-3">
+          <p className="text-sm text-red-700">No Lulu package supports this book type with {pageCount} pages. Change the page count or book type.</p>
+        </div>
+      )}
+
+      {availableOptions?.validPageRange && (
+        <div className="rounded border border-slate-200 bg-white p-3 text-sm text-slate-600">
+          Valid package range for current selection: {availableOptions.validPageRange.minPage} - {availableOptions.validPageRange.maxPage} pages.
+        </div>
+      )}
+
+      {availableOptions?.valid ? <div className="grid gap-4 sm:grid-cols-2">
+        <SpecSelectField label="Interior color" name={`${format}-interiorColor`} options={interiorColors} value={interiorColor} onChange={setInteriorColor} />
+        <SpecSelectField label="Print quality" name={`${format}-printQuality`} options={printQualities} value={printQuality} onChange={setPrintQuality} />
+        <SpecSelectField label="Binding type" name={`${format}-binding`} options={availableBindings.map((b) => b.value)} labels={Object.fromEntries(availableBindings.map((b) => [b.value, b.label || b.value]))} value={binding} onChange={setBinding} />
+        <SpecSelectField label="Paper type" name={`${format}-paperType`} options={paperTypes} value={paperType} onChange={setPaperType} />
+        <SpecSelectField label="Cover finish" name={`${format}-lamination`} options={laminations} value={lamination} onChange={setLamination} />
+        {isLinenWrap && (
+          <SpecSelectField label="Linen color" name={`${format}-linenColor`} options={linenColors} value={linenColor} onChange={setLinenColor} />
+        )}
+        {isLinenWrap && (
+          <SpecSelectField label="Foil color" name={`${format}-foilColor`} options={foilColors} value={foilColor} onChange={setFoilColor} />
+        )}
+        {!isLinenWrap && <input type="hidden" name={`${format}-linenColor`} value="X" />}
+        {!isLinenWrap && <input type="hidden" name={`${format}-foilColor`} value="X" />}
+        <SpecSelectField label="Print inside cover" name={`${format}-printInsideCover`} options={printInsideCoverOptions} value={printInsideCover} onChange={setPrintInsideCover} />
+      </div> : <div className="rounded border border-slate-200 bg-white p-3 text-sm text-slate-500">Select a book type and page count to reveal valid Lulu options.</div>}
+
+      {matchResult?.found && (
+        <div className="rounded border-2 border-[#cfaf45] bg-amber-50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Package className="size-5 text-[#997b1e]" />
+            <p className="text-sm font-bold text-[#997b1e]">Print Edition Summary</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div>
+              <p className="text-xs text-slate-500">SKU (Pod Package ID)</p>
+              <p className="font-mono text-base font-bold text-[#997b1e]">{matchResult.sku}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Manufacturing Cost</p>
+              <p className="text-base font-bold text-slate-800">
+                ${matchResult.pricing?.basePriceUSD.toFixed(2)} + (${matchResult.pricing?.perPagePriceUSD.toFixed(4)} per page)
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Page Range</p>
+              <p className="text-sm text-slate-700">
+                {matchResult.minPage} - {matchResult.maxPage} pages
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      {matchResult && !matchResult.found && (
+        <div className="rounded border border-red-200 bg-red-50 p-3">
+          <p className="text-sm text-red-700">No matching configuration found. Please adjust your selections.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpecSelectField({
+  label,
+  name,
+  options,
+  labels,
+  value,
+  onChange,
+}: {
+  label: string;
+  name: string;
+  options: string[];
+  labels?: Record<string, string>;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  if (!options.length) {
+    return (
+      <label className="block space-y-2">
+        <span className="text-sm font-medium text-slate-800">{label}</span>
+        <div className="h-11 w-full border border-slate-200 bg-slate-100 px-3 flex items-center text-sm text-slate-400">
+          No options available
+        </div>
+      </label>
+    );
+  }
+
+  return (
+    <label className="block space-y-2">
+      <span className="text-sm font-medium text-slate-800">{label}</span>
+      <select
+        name={name}
+        value={options.includes(value) ? value : options[0]}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-11 w-full border border-slate-300 bg-slate-50 px-3 outline-none focus:border-[#cfaf45]"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {labels?.[option] || (option === "X" ? "None" : option)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function parsePaperSelection(value: string) {
+  const [paperType, ppiPart] = value.split(" / ");
+  const interiorPpi = Number(ppiPart?.replace(/\D/g, "")) || 0;
+  return {
+    paperType: paperType || "60# Uncoated White",
+    interiorPpi,
+  };
+}
+
+function unwrapApiData<T>(payload: unknown): T {
+  const first = payload && typeof payload === "object" && "data" in payload ? (payload as { data?: unknown }).data : payload;
+  return (first && typeof first === "object" && "data" in first ? (first as { data?: unknown }).data : first) as T;
+}
+
+function RoyaltyCalculator({ isFoundingAuthor = false }: { isFoundingAuthor?: boolean }) {
+  const [listingPrice, setListingPrice] = useState<string>("");
+  const price = parseFloat(listingPrice) || 0;
+  const authorPercentage = isFoundingAuthor ? 0.65 : 0.7;
+  const adminPercentage = isFoundingAuthor ? 0.35 : 0.3;
+  const authorEarnings = price * authorPercentage;
+  const adminEarnings = price * adminPercentage;
+
+  return (
+    <div className="grid gap-6 md:grid-cols-2">
+      <div className="space-y-4">
+        <div>
+          <label htmlFor="listing-price" className="block text-sm font-medium text-slate-700">
+            Book Listing Price (USD)
+          </label>
+          <Input id="listing-price" type="number" min="0" step="0.01" placeholder="0.00" value={listingPrice} onChange={(e) => setListingPrice(e.target.value)} className="mt-1 bg-slate-50 focus-visible:ring-[#cb9f10]" />
+        </div>
+        <p className="text-sm text-slate-500">
+          Current author status: <strong className="text-slate-700">{isFoundingAuthor ? "Founding Author (65% Cut)" : "Standard Author (70% Cut)"}</strong>
+        </p>
+      </div>
+      <div className="rounded-lg bg-lime-50 p-4 border border-[#e8e0cc] flex flex-col justify-center">
+        <div className="flex justify-between items-center border-b border-[#d5d2cb] pb-2 mb-2">
+          <span className="text-sm font-medium text-slate-600">Your Earnings</span>
+          <span className="text-lg font-bold text-teal-950">${authorEarnings.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-sm font-medium text-slate-600">Platform Fee</span>
+          <span className="text-lg font-bold text-slate-700">${adminEarnings.toFixed(2)}</span>
+        </div>
+      </div>
     </div>
   );
 }

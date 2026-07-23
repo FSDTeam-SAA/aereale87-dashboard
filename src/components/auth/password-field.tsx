@@ -8,9 +8,10 @@ import { AuthField } from "./auth-field";
 type PasswordFieldProps = {
   label: string;
   placeholder?: string;
+  name?: string;
 };
 
-export function PasswordField({ label, placeholder }: PasswordFieldProps) {
+export function PasswordField({ label, placeholder, name }: PasswordFieldProps) {
   const [visible, setVisible] = useState(false);
 
   return (
@@ -18,6 +19,9 @@ export function PasswordField({ label, placeholder }: PasswordFieldProps) {
       label={label}
       type={visible ? "text" : "password"}
       placeholder={placeholder}
+      name={name}
+      required
+      minLength={8}
       icon={<Lock className="size-3.5" />}
       trailing={
         <button

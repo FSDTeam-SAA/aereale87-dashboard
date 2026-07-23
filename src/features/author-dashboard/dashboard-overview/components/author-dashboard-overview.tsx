@@ -1,5 +1,8 @@
-import { MoreVertical } from "lucide-react";
+"use client";
 
+import { Calculator, MoreVertical } from "lucide-react";
+import { useState } from "react";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -268,6 +271,8 @@ export function AuthorDashboardOverview({ data }: AuthorDashboardOverviewProps) 
         </Card>
       </section>
 
+
+
       <div className="pointer-events-none fixed bottom-5 right-5 z-20 hidden lg:block">
         <div className="flex h-[82px] w-[82px] flex-col items-center justify-center rounded-full border border-[#e4dfd5] bg-[#fcfbf7] shadow-[0_0_4px_rgba(0,0,0,0.25)]">
           <div className="flex size-10 items-center justify-center rounded-full bg-[#dbe8f6] text-[12px] font-bold text-[#325f91]">
@@ -281,3 +286,4 @@ export function AuthorDashboardOverview({ data }: AuthorDashboardOverviewProps) 
     </div>
   );
 }
+

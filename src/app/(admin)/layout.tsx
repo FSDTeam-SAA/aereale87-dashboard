@@ -1,4 +1,7 @@
 import { DashboardShell, type DashboardNavItem } from "@/components/dashboard/dashboard-shell";
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/lib/auth";
 
 const adminNavItems: DashboardNavItem[] = [
   {
@@ -13,10 +16,19 @@ const adminNavItems: DashboardNavItem[] = [
     disabled: true,
   },
   {
+    title: "Book Approvals",
+    href: "/admin-dashboard/books",
+    icon: "book-open-text",
+  },
+  {
     title: "Authors",
     href: "/admin-dashboard/authors",
     icon: "users",
-    disabled: true,
+  },
+  {
+    title: "Subscribers",
+    href: "/admin-dashboard/subscribers",
+    icon: "mail",
   },
   {
     title: "Reports",
@@ -26,19 +38,23 @@ const adminNavItems: DashboardNavItem[] = [
   },
 ];
 
-export default function AdminLayout({
+export default async function AdminLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await getServerSession(authOptions);
+  if (!session || session.error === "RefreshAccessTokenError" || !["ADMIN", "SUPERADMIN"].includes(session.user.role)) {
+    redirect("/");
+  }
   return (
     <DashboardShell
       items={adminNavItems}
       sectionLabel="Admin control room"
       user={{
-        name: "Olivia Carter",
-        email: "olivia@example.com",
-        role: "Operations Admin",
+        name: session.user.name || session.user.email || "Administrator",
+        email: session.user.email || "",
+        role: session.user.role,
       }}
     >
       {children}

@@ -1,13 +1,43 @@
+"use client";
+
 import Link from "next/link";
+import { FormEvent, useState } from "react";
+import { signIn } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import { Mail } from "lucide-react";
 
-import { AuthButton } from "./auth-actions";
 import { AuthBrand } from "./auth-brand";
 import { AuthField } from "./auth-field";
 import { AuthShell } from "./auth-shell";
 import { PasswordField } from "./password-field";
 
 export function SignInForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [pending, setPending] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setPending(true);
+    const result = await signIn("credentials", {
+      email: String(form.get("email") || "").trim().toLowerCase(),
+      password: String(form.get("password") || ""),
+      redirect: false,
+    });
+    setPending(false);
+    if (!result?.ok) {
+      toast.error(result?.error || "Unable to sign in.");
+      return;
+    }
+    const callbackUrl = searchParams.get("callbackUrl");
+    const session = await fetch("/api/auth/session").then((response) => response.json());
+    const destination = callbackUrl || (session.user?.role === "AUTHOR" ? "/author-dashboard" : "/admin-dashboard");
+    router.push(destination);
+    router.refresh();
+  }
+
   return (
     <AuthShell>
       <AuthBrand />
@@ -20,13 +50,15 @@ export function SignInForm() {
         </p>
       </div>
 
-      <form className="mt-6 space-y-3">
+      <form className="mt-6 space-y-3" onSubmit={handleSubmit}>
         <AuthField
           label="Email Address"
+          name="email"
           placeholder="you@example.com"
           icon={<Mail className="size-3.5" />}
+          required
         />
-        <PasswordField label="Password" placeholder="Enter your password" />
+        <PasswordField label="Password" name="password" placeholder="Enter your password" />
 
         <div className="flex items-center justify-between text-[11px] text-[#8b877f]">
           <label className="flex items-center gap-1.5">
@@ -38,9 +70,9 @@ export function SignInForm() {
           </Link>
         </div>
 
-        <AuthButton href="/author-dashboard" className="mt-2">
-          Sign In
-        </AuthButton>
+        <button type="submit" disabled={pending} className="mt-2 flex h-10 w-full items-center justify-center bg-[#d3af39] text-[11px] font-bold uppercase tracking-[0.16em] text-white transition-colors hover:bg-[#be9a27] disabled:opacity-60">
+          {pending ? "Signing In..." : "Sign In"}
+        </button>
       </form>
     </AuthShell>
   );

@@ -10,6 +10,7 @@ export type DashboardNavItem = {
     | "book-open-text"
     | "pen-square"
     | "message-square"
+    | "mail"
     | "shield"
     | "users"
     | "bar-chart-3"
@@ -40,7 +41,7 @@ export function DashboardShell({
   return (
     <div className="min-h-screen bg-[#fcfbf7]">
       <div className="mx-auto flex min-h-screen w-full">
-        <Sidebar items={items} sectionLabel={sectionLabel} />
+        <Sidebar items={items} sectionLabel={sectionLabel} user={user} />
         <div className="flex min-h-screen min-w-0 flex-1 flex-col lg:pl-64">
           <Topbar
             user={user}

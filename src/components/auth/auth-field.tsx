@@ -9,6 +9,9 @@ type AuthFieldProps = {
   type?: string;
   placeholder?: string;
   className?: string;
+  name?: string;
+  required?: boolean;
+  minLength?: number;
 };
 
 export function AuthField({
@@ -18,6 +21,9 @@ export function AuthField({
   type = "text",
   placeholder,
   className,
+  name,
+  required,
+  minLength,
 }: AuthFieldProps) {
   return (
     <label className={cn("block space-y-1.5", className)}>
@@ -26,6 +32,9 @@ export function AuthField({
         {icon ? <span className="mr-2 inline-flex size-4 shrink-0 items-center justify-center">{icon}</span> : null}
         <input
           type={type}
+          name={name}
+          required={required}
+          minLength={minLength}
           placeholder={placeholder}
           className="h-full flex-1 bg-transparent text-[12px] text-[#263f37] outline-none placeholder:text-[#a9a39a]"
         />

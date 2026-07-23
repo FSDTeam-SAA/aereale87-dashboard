@@ -1,4 +1,7 @@
 import { DashboardShell, type DashboardNavItem } from "@/components/dashboard/dashboard-shell";
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/lib/auth";
 
 const authorNavItems: DashboardNavItem[] = [
   {
@@ -33,19 +36,23 @@ const authorNavItems: DashboardNavItem[] = [
   },
 ];
 
-export default function AuthorLayout({
+export default async function AuthorLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await getServerSession(authOptions);
+  if (!session || session.error === "RefreshAccessTokenError" || session.user.role !== "AUTHOR") {
+    redirect("/");
+  }
   return (
     <DashboardShell
       items={authorNavItems}
       sectionLabel="Author dashboard"
       user={{
-        name: "Demo Name",
-        email: "demo@authorhub.com",
-        role: "Super Admin",
+        name: session.user.name || session.user.email || "Author",
+        email: session.user.email || "",
+        role: session.user.role,
       }}
     >
       {children}

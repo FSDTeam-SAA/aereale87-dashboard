@@ -36,4 +36,5 @@ export type AuthorDashboardOverviewData = {
   weeklyMetrics: AuthorWeeklyMetric[];
   chartPoints: AuthorChartPoint[];
   products: AuthorProduct[];
+  isFoundingAuthor?: boolean;
 };

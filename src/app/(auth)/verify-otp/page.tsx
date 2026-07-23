@@ -1,5 +1,6 @@
 import { VerifyOtpForm } from "@/components/auth/verify-otp-form";
+import { Suspense } from "react";
 
 export default function VerifyOtpPage() {
-  return <VerifyOtpForm />;
+  return <Suspense fallback={null}><VerifyOtpForm /></Suspense>;
 }

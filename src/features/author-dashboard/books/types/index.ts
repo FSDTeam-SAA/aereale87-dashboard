@@ -1,35 +1,30 @@
-export type AuthorBookStatus = "Pending" | "Approved";
+export type BookStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
+
+export type BackendBook = {
+  id: string;
+  title: string;
+  description: string | null;
+  bookCover: string | null;
+  status: BookStatus;
+  category: string | null;
+  language: string | null;
+  formats: Array<{ formatType: string; listPrice: number }>;
+  sellingPrice?: number;
+  ebookAvailable?: boolean;
+  audiobookAvailable?: boolean;
+  printAvailable?: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type AuthorBooksSummary = {
   id: string;
   title: string;
   value: string;
-  change: string;
-  trend: "up" | "down" | "neutral";
   subtitle: string;
-};
-
-export type AuthorBookTab = {
-  id: string;
-  label: string;
-  count?: number;
-  active?: boolean;
-};
-
-export type AuthorBookRecord = {
-  id: string;
-  title: string;
-  views: string;
-  sales: string;
-  price: string;
-  revenue: string;
-  status: AuthorBookStatus;
-  accent: "amber" | "green";
-  coverTone: string;
 };
 
 export type AuthorBooksData = {
   summary: AuthorBooksSummary[];
-  tabs: AuthorBookTab[];
-  books: AuthorBookRecord[];
+  books: BackendBook[];
 };

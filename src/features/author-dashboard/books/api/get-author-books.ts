@@ -1,112 +1,39 @@
-import type { AuthorBooksData } from "../types";
+import type { AuthorBooksData, BackendBook, BookStatus } from "../types";
 
-export async function getAuthorBooks(): Promise<AuthorBooksData> {
-  return Promise.resolve({
+type ApiEnvelope<T> = { data: T; message: string; statusCode: number };
+
+export async function getAuthorBooks(
+  accessToken: string,
+): Promise<AuthorBooksData> {
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/books/mine?limit=100`,
+    { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" },
+  );
+  if (!response.ok) {
+    let message = "Unable to load your books.";
+    try {
+      const errBody = (await response.json()) as { message?: string | string[] };
+      if (Array.isArray(errBody.message)) message = errBody.message.join(", ");
+      else if (errBody.message) message = errBody.message;
+    } catch {
+      // ignore JSON parse errors — fall back to generic message
+    }
+    throw new Error(message);
+  }
+  const envelope = (await response.json()) as ApiEnvelope<{
+    books: BackendBook[];
+    total: number;
+  }>;
+  const books = envelope.data.books;
+  const count = (status: BookStatus) => books.filter((book) => book.status === status).length;
+
+  return {
     summary: [
-      {
-        id: "published-books",
-        title: "Published Books",
-        value: "1,240",
-        change: "14.4%",
-        trend: "up",
-        subtitle: "Last 7 days",
-      },
-      {
-        id: "pending-review",
-        title: "Pending Review",
-        value: "240",
-        change: "20%",
-        trend: "up",
-        subtitle: "Last 7 days",
-      },
-      {
-        id: "total-readers",
-        title: "Total Readers",
-        value: "960",
-        change: "85%",
-        trend: "neutral",
-        subtitle: "Last 7 days",
-      },
-      {
-        id: "total-revenue",
-        title: "Total Revenue",
-        value: "87K",
-        change: "5%",
-        trend: "down",
-        subtitle: "Last 7 days",
-      },
+      { id: "approved", title: "Published Books", value: String(count("APPROVED")), subtitle: "Approved and live" },
+      { id: "submitted", title: "Pending Review", value: String(count("SUBMITTED")), subtitle: "Waiting for moderation" },
+      { id: "draft", title: "Draft Books", value: String(count("DRAFT")), subtitle: "Not submitted" },
+      { id: "rejected", title: "Needs Changes", value: String(count("REJECTED")), subtitle: "Editable and resubmittable" },
     ],
-    tabs: [
-      { id: "my-books", label: "My Books", count: 20, active: true },
-      { id: "draft", label: "Draft" },
-    ],
-    books: [
-      {
-        id: "book-1",
-        title: "The Architecture of Leadership",
-        views: "-----",
-        sales: "-----",
-        price: "$49.99",
-        revenue: "-----",
-        status: "Pending",
-        accent: "amber",
-        coverTone: "from-[#d15a2c] via-[#f0a84b] to-[#8a2d20]",
-      },
-      {
-        id: "book-2",
-        title: "Echoes of the Silent City",
-        views: "1024",
-        sales: "104",
-        price: "$49.99",
-        revenue: "$999.00",
-        status: "Approved",
-        accent: "green",
-        coverTone: "from-[#c86531] via-[#f0b04b] to-[#732a2c]",
-      },
-      {
-        id: "book-3",
-        title: "The Quiet Mind",
-        views: "-----",
-        sales: "-----",
-        price: "$49.99",
-        revenue: "-----",
-        status: "Pending",
-        accent: "amber",
-        coverTone: "from-[#8c3240] via-[#d57957] to-[#57293d]",
-      },
-      {
-        id: "book-4",
-        title: "Frontiers of Discovery",
-        views: "1024",
-        sales: "104",
-        price: "$49.99",
-        revenue: "$999.00",
-        status: "Approved",
-        accent: "green",
-        coverTone: "from-[#d26f35] via-[#f1c261] to-[#72422c]",
-      },
-      {
-        id: "book-5",
-        title: "The Silent Harbor",
-        views: "-----",
-        sales: "-----",
-        price: "$49.99",
-        revenue: "-----",
-        status: "Pending",
-        accent: "amber",
-        coverTone: "from-[#aa382d] via-[#e57e49] to-[#712820]",
-      },
-      {
-        id: "book-6",
-        title: "Whispers in the Wind",
-        views: "980",
-        sales: "87",
-        price: "$49.99",
-        revenue: "$850.00",
-        status: "Approved",
-        accent: "green",
-        coverTone: "from-[#9e3826] via-[#e5a04c] to-[#8a2b1c]",
-      },
-    ],
-  });
+    books,
+  };
 }
