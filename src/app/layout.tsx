@@ -15,8 +15,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aereale87 Dashboard",
-  description: "Multi-role dashboard scaffold for authors and admins.",
+  title: "Wonder Emporium Dashboard",
+  description: "Dashboard portal for authors and admins.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({
