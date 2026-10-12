@@ -17,6 +17,11 @@ export type AdminAuthor = {
     avatarUrl: string | null;
   } | null;
   bookCount: number;
+  kyc?: {
+    kycStatus: "NOT_SUBMITTED" | "SUBMITTED" | "APPROVED" | "REJECTED";
+    taxFormType: string | null;
+    taxFormFileUrl: string | null;
+  } | null;
 };
 
 export type PaginatedAuthors = {

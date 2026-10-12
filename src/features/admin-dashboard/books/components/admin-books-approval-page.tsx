@@ -12,25 +12,38 @@ import { approveBook } from "../api/approve-book";
 import type { AdminPendingBooksData, AdminPendingBook } from "../types";
 import { getBookFileUrl, type BookFileType } from "../types";
 
+interface AdminBooksApprovalPageProps {
+  pendingData?: AdminPendingBooksData;
+  catalogData?: AdminPendingBooksData;
+  data?: AdminPendingBooksData;
+  accessToken: string;
+}
+
 export function AdminBooksApprovalPage({
+  pendingData,
+  catalogData,
   data,
   accessToken,
-}: {
-  data: AdminPendingBooksData;
-  accessToken: string;
-}) {
+}: AdminBooksApprovalPageProps) {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<"CATALOG" | "PENDING">(
+    catalogData && catalogData.books.length > 0 ? "CATALOG" : "PENDING"
+  );
   const [query, setQuery] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [detailBook, setDetailBook] = useState<AdminPendingBook | null>(null);
 
-  const books = useMemo(
-    () =>
-      data.books.filter((book) =>
-        book.title.toLowerCase().includes(query.toLowerCase())
-      ),
-    [data.books, query]
-  );
+  const effectivePending = pendingData?.books || data?.books || [];
+  const effectiveCatalog = catalogData?.books || effectivePending;
+
+  const displayedBooks = useMemo(() => {
+    const sourceList = activeTab === "PENDING" ? effectivePending : effectiveCatalog;
+    return sourceList.filter((book) =>
+      book.title.toLowerCase().includes(query.toLowerCase()) ||
+      (book.author?.username || "").toLowerCase().includes(query.toLowerCase()) ||
+      (book.category || "").toLowerCase().includes(query.toLowerCase())
+    );
+  }, [activeTab, effectivePending, effectiveCatalog, query]);
 
   async function handleApprove(bookId: string, status: "APPROVED" | "REJECTED") {
     setPendingId(bookId);
@@ -49,23 +62,63 @@ export function AdminBooksApprovalPage({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Book Approvals</h1>
+          <h1 className="text-3xl font-bold text-slate-900">Books & Catalog</h1>
           <p className="mt-1 text-slate-500">
-            Review and approve new books submitted by authors.
+            Manage your digital library, upload e-books and audiobooks directly to the app, and review author submissions.
           </p>
         </div>
+
+        <Link
+          href="/admin-dashboard/books/upload"
+          className="inline-flex items-center gap-2 rounded-xl bg-[#24352f] px-5 py-2.5 text-sm font-bold text-white shadow-md hover:bg-[#192621] transition"
+        >
+          <FileText className="size-4 text-[#cfaf45]" />
+          <span>+ Upload Book to App</span>
+        </Link>
       </div>
 
       <Card className="rounded-lg bg-white py-0 shadow-sm ring-1 ring-black/10">
         <CardContent className="p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            {/* Tabs */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab("CATALOG")}
+                className={`rounded-lg px-4 py-2 text-xs font-bold transition ${
+                  activeTab === "CATALOG"
+                    ? "bg-[#cfaf45] text-white shadow-sm"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                Book Catalog ({effectiveCatalog.length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("PENDING")}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-bold transition ${
+                  activeTab === "PENDING"
+                    ? "bg-[#cfaf45] text-white shadow-sm"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                <span>Pending Approvals</span>
+                {effectivePending.length > 0 && (
+                  <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                    {effectivePending.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
             <div className="flex h-10 items-center gap-2 rounded-lg border border-slate-300 px-3">
               <Search className="size-4 text-slate-500" />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search books"
-                className="bg-transparent text-sm outline-none"
+                placeholder="Search by title, author, or category..."
+                className="bg-transparent text-sm outline-none w-64"
               />
             </div>
           </div>
@@ -77,15 +130,17 @@ export function AdminBooksApprovalPage({
                   <th className="p-4">Book Details</th>
                   <th className="p-4">Author</th>
                   <th className="p-4">Formats & Pricing</th>
+                  <th className="p-4">Status in App</th>
                   <th className="p-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {books.map((book) => (
+                {displayedBooks.map((book) => (
                   <BookRow
                     key={book.id}
                     book={book}
                     isPending={pendingId === book.id}
+                    showApprovalActions={activeTab === "PENDING" || book.status === "SUBMITTED"}
                     onApprove={() => handleApprove(book.id, "APPROVED")}
                     onReject={() => handleApprove(book.id, "REJECTED")}
                     onViewDetail={() => setDetailBook(book)}
@@ -93,9 +148,11 @@ export function AdminBooksApprovalPage({
                 ))}
               </tbody>
             </table>
-            {!books.length && (
+            {!displayedBooks.length && (
               <div className="py-12 text-center text-slate-500">
-                No pending books found.
+                {activeTab === "PENDING"
+                  ? "No books are currently awaiting review."
+                  : "No books match your search."}
               </div>
             )}
           </div>
@@ -124,12 +181,14 @@ export function AdminBooksApprovalPage({
 function BookRow({
   book,
   isPending,
+  showApprovalActions = false,
   onApprove,
   onReject,
   onViewDetail,
 }: {
   book: AdminPendingBook;
   isPending: boolean;
+  showApprovalActions?: boolean;
   onApprove: () => void;
   onReject: () => void;
   onViewDetail: () => void;
@@ -177,13 +236,13 @@ function BookRow({
       <td className="p-4">
         <div className="flex flex-col">
           <Link
-            href={`/admin-dashboard/authors/${book.author?.id}`}
+            href={`/admin-dashboard/authors/${book.author?.id || book.authorId}`}
             className="text-sm font-medium text-slate-900 hover:text-[#a88922] inline-flex items-center gap-1"
           >
             {displayName}
             <ExternalLink className="size-3 text-slate-400" />
           </Link>
-          <span className="text-xs text-slate-500 mt-0.5">@{book.author?.username}</span>
+          <span className="text-xs text-slate-500 mt-0.5">@{book.author?.username || "platform"}</span>
           {book.author?.email && (
             <span className="text-xs text-slate-400 mt-0.5">{book.author.email}</span>
           )}
@@ -212,6 +271,26 @@ function BookRow({
         </div>
       </td>
       <td className="p-4">
+        {book.status === "APPROVED" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+            <CheckCircle className="size-3 text-emerald-500" />
+            Live in App
+          </span>
+        ) : book.status === "SUBMITTED" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+            Awaiting Review
+          </span>
+        ) : book.status === "REJECTED" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-200">
+            Rejected
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+            Draft
+          </span>
+        )}
+      </td>
+      <td className="p-4">
         <div className="flex justify-end gap-2">
           <Button
             size="sm"
@@ -222,25 +301,29 @@ function BookRow({
             <Eye className="size-4 mr-1.5" />
             View
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-            onClick={onReject}
-            disabled={isPending}
-          >
-            <XCircle className="size-4 mr-1.5" />
-            Reject
-          </Button>
-          <Button
-            size="sm"
-            className="bg-green-600 hover:bg-green-700 text-white"
-            onClick={onApprove}
-            disabled={isPending}
-          >
-            <CheckCircle className="size-4 mr-1.5" />
-            Approve
-          </Button>
+          {showApprovalActions && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                onClick={onReject}
+                disabled={isPending}
+              >
+                <XCircle className="size-4 mr-1.5" />
+                Reject
+              </Button>
+              <Button
+                size="sm"
+                className="bg-green-600 hover:bg-green-700 text-white"
+                onClick={onApprove}
+                disabled={isPending}
+              >
+                <CheckCircle className="size-4 mr-1.5" />
+                Approve
+              </Button>
+            </>
+          )}
         </div>
       </td>
     </tr>

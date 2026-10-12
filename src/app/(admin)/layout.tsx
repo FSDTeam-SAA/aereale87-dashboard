@@ -15,7 +15,7 @@ const adminNavItems: DashboardNavItem[] = [
     icon: "shopping-cart",
   },
   {
-    title: "Book Approvals",
+    title: "Books & Catalog",
     href: "/admin-dashboard/books",
     icon: "book-open-text",
   },
@@ -23,6 +23,11 @@ const adminNavItems: DashboardNavItem[] = [
     title: "Authors",
     href: "/admin-dashboard/authors",
     icon: "users",
+  },
+  {
+    title: "W-9 & Tax Forms",
+    href: "/admin-dashboard/tax-forms",
+    icon: "file-text",
   },
   {
     title: "Payouts",

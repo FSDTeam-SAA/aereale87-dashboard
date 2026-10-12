@@ -60,8 +60,8 @@ export function SubscribersPage({ data }: { data: PaginatedNewsletterSubscribers
                         {subscriber.email}
                       </span>
                     </td>
-                    <td className="p-4 text-slate-600">
-                      {new Date(subscriber.subscribedAt).toLocaleDateString()}
+                    <td className="p-4 text-slate-600" suppressHydrationWarning>
+                      {new Date(subscriber.subscribedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                     </td>
                     <td className="p-4">
                       <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">

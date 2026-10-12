@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { authOptions } from "@/lib/auth";
 import { getAuthor } from "@/features/admin-dashboard/authors/api/authors.api";
-import { AuthorStatusAction } from "@/features/admin-dashboard/authors/components/author-status-action";
+import { AuthorActionDropdown } from "@/features/admin-dashboard/authors/components/author-action-dropdown";
 import { AdminKycReviewPanel } from "@/features/admin-dashboard/authors/components/admin-kyc-review-panel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -26,9 +26,17 @@ export default async function AdminAuthorDetailPage({ params }: { params: Promis
         <div>
           <p className="text-sm uppercase tracking-wider text-slate-500">Author profile</p>
           <h1 className="mt-1 text-3xl font-bold text-slate-950">{name}</h1>
-          <p className="mt-1 text-slate-500">Joined {new Date(author.createdAt).toLocaleDateString()}</p>
+          <p className="mt-1 text-slate-500" suppressHydrationWarning>
+            Joined {new Date(author.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+          </p>
         </div>
-        <AuthorStatusAction id={author.id} status={author.status} accessToken={session.accessToken} />
+        <AuthorActionDropdown
+          id={author.id}
+          name={name}
+          status={author.status}
+          accessToken={session.accessToken}
+          taxFormFileUrl={author.kyc?.taxFormFileUrl}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
