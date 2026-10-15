@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 
 import { approveAuthor, suspendAuthor } from "../api/authors.api";
+import { cn } from "@/lib/utils";
 import type { AuthorStatus } from "../types";
 
 interface AuthorActionDropdownProps {
@@ -109,7 +110,7 @@ export function AuthorActionDropdown({
           </>
         ) : (
           <>
-            <span>Actions</span>
+            <span>Choose Action</span>
             <ChevronDown className={`size-3.5 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />
           </>
         )}
@@ -117,41 +118,65 @@ export function AuthorActionDropdown({
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute right-0 z-50 mt-1.5 w-52 origin-top-right rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl ring-1 ring-black/5 animate-in fade-in zoom-in-95">
+        <div className="absolute right-0 z-50 mt-1.5 w-56 origin-top-right rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl ring-1 ring-black/5 animate-in fade-in zoom-in-95">
           <div className="border-b border-slate-100 px-3 py-1.5">
             <p className="truncate text-xs font-semibold text-slate-900">{name}</p>
             <p className="text-[10px] uppercase tracking-wider text-slate-400">
-              Status: <span className="font-bold">{status === "INACTIVE" ? "PENDING" : status}</span>
+              Current: <span className="font-bold text-slate-700">{status === "INACTIVE" ? "PENDING" : status}</span>
             </p>
           </div>
 
           <div className="py-1">
             {/* Action: Approve */}
-            {status !== "ACTIVE" && (
-              <button
-                type="button"
-                onClick={handleApprove}
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-emerald-700 hover:bg-emerald-50 transition-colors"
-              >
+            <button
+              type="button"
+              disabled={status === "ACTIVE"}
+              onClick={handleApprove}
+              className={cn(
+                "flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium transition-colors",
+                status === "ACTIVE"
+                  ? "text-slate-400 cursor-not-allowed bg-slate-50/50"
+                  : "text-emerald-700 hover:bg-emerald-50"
+              )}
+            >
+              <div className="flex items-center gap-2">
                 <CheckCircle2 className="size-4 text-emerald-600" />
-                <span>Approve / Activate Author</span>
-              </button>
-            )}
+                <span>Approve Author</span>
+              </div>
+              {status === "ACTIVE" && (
+                <span className="text-[10px] font-bold uppercase text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                  Current
+                </span>
+              )}
+            </button>
 
             {/* Action: Suspend */}
-            {status === "ACTIVE" && (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsOpen(false);
-                  setShowSuspendModal(true);
-                }}
-                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
-              >
+            <button
+              type="button"
+              disabled={status === "SUSPENDED"}
+              onClick={() => {
+                setIsOpen(false);
+                setShowSuspendModal(true);
+              }}
+              className={cn(
+                "flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium transition-colors",
+                status === "SUSPENDED"
+                  ? "text-slate-400 cursor-not-allowed bg-slate-50/50"
+                  : "text-red-600 hover:bg-red-50"
+              )}
+            >
+              <div className="flex items-center gap-2">
                 <Ban className="size-4 text-red-500" />
                 <span>Suspend Author</span>
-              </button>
-            )}
+              </div>
+              {status === "SUSPENDED" && (
+                <span className="text-[10px] font-bold uppercase text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
+                  Current
+                </span>
+              )}
+            </button>
+
+            <div className="my-1 border-t border-slate-100" />
 
             {/* Action: View Tax / W-9 Form */}
             {taxFormFileUrl ? (
