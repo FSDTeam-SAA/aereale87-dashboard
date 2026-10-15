@@ -37,6 +37,9 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
   const [attributionMode, setAttributionMode] = useState<"OWNER" | "AUTHOR">("OWNER");
   const [selectedAuthorId, setSelectedAuthorId] = useState<string>("");
 
+  // Public domain / free title
+  const [isPublicDomain, setIsPublicDomain] = useState(false);
+
   // Publish Status
   const [publishImmediately, setPublishImmediately] = useState(true);
 
@@ -60,6 +63,25 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  function handlePublicDomainToggle(checked: boolean) {
+    setIsPublicDomain(checked);
+    if (checked) {
+      setAttributionMode("OWNER");
+      setSelectedAuthorId("");
+      setPrices((prev) => ({
+        ...prev,
+        EBOOK: "0.00",
+        AUDIOBOOK: "0.00",
+      }));
+    } else {
+      setPrices((prev) => ({
+        ...prev,
+        EBOOK: "9.99",
+        AUDIOBOOK: "14.99",
+      }));
+    }
+  }
 
   function toggleFormat(format: FormatKey) {
     setSelectedFormats((prev) =>
@@ -117,16 +139,25 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
     if (isbn) body.append("isbn", String(isbn));
 
     const tags = formData.get("tags");
-    if (tags) {
-      const tagList = String(tags)
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
+    const tagList = tags
+      ? String(tags)
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
+
+    if (isPublicDomain && !tagList.some((t) => t.toLowerCase() === "public domain")) {
+      tagList.push("Public Domain");
+    }
+    if (tagList.length > 0) {
       body.append("tags", JSON.stringify(tagList));
     }
 
-    // Author Assignment
-    if (attributionMode === "AUTHOR" && selectedAuthorId) {
+    // Author Assignment & Royalty
+    if (isPublicDomain) {
+      // Public domain books carry no author royalty
+      body.append("authorEarnings", "0");
+    } else if (attributionMode === "AUTHOR" && selectedAuthorId) {
       body.append("authorId", selectedAuthorId);
     }
 
@@ -151,7 +182,7 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
     // Formats & Pricing
     const formatsPayload = selectedFormats.map((format) => ({
       formatType: format,
-      listPrice: parseFloat(prices[format] || "0"),
+      listPrice: isPublicDomain ? 0 : parseFloat(prices[format] || "0"),
     }));
     body.append("formats", JSON.stringify(formatsPayload));
 
@@ -317,9 +348,9 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
                 <div className="flex items-center gap-3">
                   <Sparkles className="size-5 text-emerald-600 shrink-0" />
                   <div>
-                    <p className="text-sm font-bold text-emerald-950">Publish directly to Mobile App</p>
+                    <p className="text-sm font-bold text-emerald-950">Publish directly to Mobile App & Website</p>
                     <p className="text-xs text-emerald-700">
-                      When enabled, the book is approved immediately and appears in the app.
+                      When enabled, the book is approved immediately and appears in the app and website catalog.
                     </p>
                   </div>
                 </div>
@@ -331,6 +362,28 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
                     className="sr-only peer"
                   />
                   <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+
+              {/* Public Domain / Free Title Option */}
+              <div className="flex items-center justify-between rounded-xl bg-amber-50/70 p-4 border border-amber-200">
+                <div className="flex items-center gap-3">
+                  <Library className="size-5 text-[#8a6e19] shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold text-amber-950">Public Domain / Free Title</p>
+                    <p className="text-xs text-amber-800">
+                      Free for readers and listeners on the app and website. Carries zero author royalty ($0.00).
+                    </p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isPublicDomain}
+                    onChange={(e) => handlePublicDomainToggle(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
                 </label>
               </div>
             </CardContent>
@@ -481,9 +534,14 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
                       <input
                         type="number"
                         step="0.01"
-                        value={prices.EBOOK}
+                        min="0"
+                        disabled={isPublicDomain}
+                        value={isPublicDomain ? "0.00" : prices.EBOOK}
                         onChange={(e) => setPrices((prev) => ({ ...prev, EBOOK: e.target.value }))}
-                        className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-right font-semibold"
+                        className={cn(
+                          "w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-right font-semibold",
+                          isPublicDomain && "bg-slate-100 text-slate-500 cursor-not-allowed"
+                        )}
                       />
                     </div>
                   </div>
@@ -518,9 +576,14 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
                       <input
                         type="number"
                         step="0.01"
-                        value={prices.AUDIOBOOK}
+                        min="0"
+                        disabled={isPublicDomain}
+                        value={isPublicDomain ? "0.00" : prices.AUDIOBOOK}
                         onChange={(e) => setPrices((prev) => ({ ...prev, AUDIOBOOK: e.target.value }))}
-                        className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-right font-semibold"
+                        className={cn(
+                          "w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-right font-semibold",
+                          isPublicDomain && "bg-slate-100 text-slate-500 cursor-not-allowed"
+                        )}
                       />
                     </div>
                   </div>
