@@ -292,7 +292,12 @@ export function AuthorUploadContentPage({ accessToken, isFoundingAuthor }: { acc
               <Field label="ISBN (optional)" name="isbn" defaultValue={book?.isbn || ""} />
               <Field label="Category" name="category" defaultValue={book?.category || ""} required />
               <Field label="Language" name="language" defaultValue={book?.language || "English"} required />
-              <Field label="Age group" name="ageGroup" defaultValue={book?.ageGroup || "Adult"} required />
+              <SelectField label="Age group" name="ageGroup" defaultValue={book?.ageGroup || "Adult"} required>
+                <option value="Adult">Adult</option>
+                <option value="Teen (ages 15–18)">Teen (ages 15–18)</option>
+                <option value="Preteen (ages 9–14)">Preteen (ages 9–14)</option>
+                <option value="Children (ages 0–8)">Children (ages 0–8)</option>
+              </SelectField>
             </div>
             <Field label="Tags (comma separated)" name="tags" defaultValue={book?.tags.join(", ")} />
             <FileField label="Book cover (used for all formats)" name="bookCover" accept="image/*" required={!bookId} />
@@ -405,6 +410,24 @@ function Field({ label, ...props }: { label: string } & React.InputHTMLAttribute
     <label className="block space-y-2">
       <span className="text-sm font-medium text-slate-800">{label}</span>
       <input {...props} className="h-11 w-full border border-slate-300 bg-slate-50 px-3 outline-none focus:border-[#cfaf45]" />
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  children,
+  ...props
+}: { label: string } & React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <label className="block space-y-2">
+      <span className="text-sm font-medium text-slate-800">{label}</span>
+      <select
+        {...props}
+        className="h-11 w-full border border-slate-300 bg-slate-50 px-3 outline-none focus:border-[#cfaf45] text-sm text-slate-900"
+      >
+        {children}
+      </select>
     </label>
   );
 }
