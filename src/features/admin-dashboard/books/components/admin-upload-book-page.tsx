@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, FormEvent } from "react";
+import { useState, useRef, useEffect, FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -26,12 +26,23 @@ import type { AdminAuthor } from "@/features/admin-dashboard/authors/types";
 interface Props {
   authors: AdminAuthor[];
   accessToken: string;
+  bookId?: string;
 }
 
 type FormatKey = "EBOOK" | "AUDIOBOOK" | "PAPERBACK" | "HARDCOVER";
 
-export function AdminUploadBookPage({ authors, accessToken }: Props) {
+export function AdminUploadBookPage({ authors, accessToken, bookId }: Props) {
   const router = useRouter();
+
+  // Loaded book state for edit mode
+  const [initialLoading, setInitialLoading] = useState(Boolean(bookId));
+  const [bookTitle, setBookTitle] = useState("");
+  const [bookDescription, setBookDescription] = useState("");
+  const [bookCategory, setBookCategory] = useState("Fiction");
+  const [bookAgeGroup, setBookAgeGroup] = useState("Adult");
+  const [bookLanguage, setBookLanguage] = useState("English");
+  const [bookIsbn, setBookIsbn] = useState("");
+  const [bookTags, setBookTags] = useState("");
 
   // Author assignment
   const [attributionMode, setAttributionMode] = useState<"OWNER" | "AUTHOR">("OWNER");
@@ -54,6 +65,10 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
   const [interiorPdf, setInteriorPdf] = useState<File | null>(null);
   const [coverPdf, setCoverPdf] = useState<File | null>(null);
 
+  // Existing file indicators
+  const [existingEbookUrl, setExistingEbookUrl] = useState<string | null>(null);
+  const [existingAudiobookUrl, setExistingAudiobookUrl] = useState<string | null>(null);
+
   // Pricing
   const [prices, setPrices] = useState<Record<FormatKey, string>>({
     EBOOK: "9.99",
@@ -63,6 +78,68 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Fetch existing book when bookId is provided
+  useEffect(() => {
+    if (!bookId) return;
+    setInitialLoading(true);
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/books/${bookId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then(async (res) => {
+        const payload = await res.json();
+        if (!res.ok) throw new Error(payload.message || "Failed to load book.");
+        const data = payload.data || payload;
+
+        if (data.title) setBookTitle(data.title);
+        if (data.description) setBookDescription(data.description);
+        if (data.category) setBookCategory(data.category);
+        if (data.ageGroup) setBookAgeGroup(data.ageGroup);
+        if (data.language) setBookLanguage(data.language);
+        if (data.isbn) setBookIsbn(data.isbn);
+        if (Array.isArray(data.tags)) setBookTags(data.tags.join(", "));
+
+        if (data.bookCover) setCoverPreview(data.bookCover);
+
+        if (data.status === "APPROVED") {
+          setPublishImmediately(true);
+        } else {
+          setPublishImmediately(false);
+        }
+
+        if (data.authorId) {
+          setSelectedAuthorId(data.authorId);
+          setAttributionMode("AUTHOR");
+        } else {
+          setAttributionMode("OWNER");
+        }
+
+        if (Array.isArray(data.formats) && data.formats.length > 0) {
+          const fmts = data.formats.map((f: { formatType: FormatKey }) => f.formatType);
+          setSelectedFormats(fmts);
+          const newPrices = { ...prices };
+          data.formats.forEach((f: { formatType: FormatKey; listPrice: number }) => {
+            if (f.formatType && f.listPrice !== undefined) {
+              newPrices[f.formatType] = String(f.listPrice);
+            }
+          });
+          setPrices(newPrices);
+        }
+
+        if (Array.isArray(data.files)) {
+          const eb = data.files.find((f: { type: string; url: string }) => f.type === "EBOOK");
+          if (eb?.url) setExistingEbookUrl(eb.url);
+          const ab = data.files.find((f: { type: string; url: string }) => f.type === "AUDIOBOOK");
+          if (ab?.url) setExistingAudiobookUrl(ab.url);
+        }
+      })
+      .catch((err) => {
+        toast.error(err instanceof Error ? err.message : "Error fetching book details.");
+      })
+      .finally(() => {
+        setInitialLoading(false);
+      });
+  }, [bookId, accessToken]);
 
   function handlePublicDomainToggle(checked: boolean) {
     setIsPublicDomain(checked);
@@ -100,7 +177,7 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    if (!coverFile) {
+    if (!coverPreview && !coverFile) {
       toast.error("Please upload a cover image for the book.");
       return;
     }
@@ -110,12 +187,12 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
       return;
     }
 
-    if (selectedFormats.includes("EBOOK") && !ebookFile) {
+    if (selectedFormats.includes("EBOOK") && !ebookFile && !existingEbookUrl) {
       toast.error("Please upload an eBook file (.epub or .pdf).");
       return;
     }
 
-    if (selectedFormats.includes("AUDIOBOOK") && !audiobookFile) {
+    if (selectedFormats.includes("AUDIOBOOK") && !audiobookFile && !existingAudiobookUrl) {
       toast.error("Please upload an Audiobook audio file.");
       return;
     }
@@ -165,7 +242,9 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
     body.append("status", publishImmediately ? "APPROVED" : "DRAFT");
 
     // Files
-    body.append("bookCover", coverFile);
+    if (coverFile) {
+      body.append("bookCover", coverFile);
+    }
     if (ebookFile && selectedFormats.includes("EBOOK")) {
       body.append("ebook", ebookFile);
     }
@@ -188,8 +267,13 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/books`, {
-        method: "POST",
+      const url = bookId
+        ? `${process.env.NEXT_PUBLIC_API_URL}/books/${bookId}`
+        : `${process.env.NEXT_PUBLIC_API_URL}/books`;
+      const method = bookId ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
@@ -198,18 +282,20 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "Failed to upload book.");
+        throw new Error(data.message || (bookId ? "Failed to update book." : "Failed to upload book."));
       }
 
       toast.success(
-        publishImmediately
+        bookId
+          ? "Book updated successfully!"
+          : publishImmediately
           ? "Book published successfully! It is now live in the mobile app."
           : "Book saved as draft."
       );
       router.push("/admin-dashboard/books");
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error uploading book.");
+      toast.error(err instanceof Error ? err.message : (bookId ? "Error updating book." : "Error uploading book."));
     } finally {
       setIsSubmitting(false);
     }
@@ -227,9 +313,13 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
             <ArrowLeft className="size-3.5" />
             <span>Back to Books & Catalog</span>
           </Link>
-          <h1 className="text-3xl font-bold text-slate-900">Upload New Book</h1>
+          <h1 className="text-3xl font-bold text-slate-900">
+            {bookId ? "Edit Book" : "Upload New Book"}
+          </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Publish e-books and audiobooks directly to the Wonder Emporium mobile app.
+            {bookId
+              ? "Update book details, file attachments, and pricing in the catalog."
+              : "Publish e-books and audiobooks directly to the Wonder Emporium mobile app."}
           </p>
         </div>
 
@@ -248,12 +338,18 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
             {isSubmitting ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                <span>Uploading to App...</span>
+                <span>{bookId ? "Updating Book..." : "Uploading to App..."}</span>
               </>
             ) : (
               <>
                 <BookOpen className="size-4 text-[#cfaf45]" />
-                <span>{publishImmediately ? "Publish to App Now" : "Save as Draft"}</span>
+                <span>
+                  {bookId
+                    ? "Update Book"
+                    : publishImmediately
+                    ? "Publish to App Now"
+                    : "Save as Draft"}
+                </span>
               </>
             )}
           </button>
@@ -402,6 +498,8 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
                 <input
                   name="title"
                   required
+                  value={bookTitle}
+                  onChange={(e) => setBookTitle(e.target.value)}
                   placeholder="e.g. Echoes of the Enchanted Grove"
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#cfaf45]/50"
                 />
@@ -413,6 +511,8 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
                   name="description"
                   required
                   rows={4}
+                  value={bookDescription}
+                  onChange={(e) => setBookDescription(e.target.value)}
                   placeholder="Compelling synopsis for readers..."
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#cfaf45]/50 resize-none"
                 />
@@ -424,7 +524,8 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
                   <select
                     name="category"
                     required
-                    defaultValue="Fiction"
+                    value={bookCategory}
+                    onChange={(e) => setBookCategory(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#cfaf45]/50"
                   >
                     <option value="Fiction">Fiction</option>
@@ -445,7 +546,8 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
                   <label className="text-xs font-semibold text-slate-700 mb-1 block">Age Group</label>
                   <select
                     name="ageGroup"
-                    defaultValue="Adult"
+                    value={bookAgeGroup}
+                    onChange={(e) => setBookAgeGroup(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#cfaf45]/50"
                   >
                     <option value="Adult">Adult</option>
@@ -459,7 +561,8 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
                   <label className="text-xs font-semibold text-slate-700 mb-1 block">Language</label>
                   <input
                     name="language"
-                    defaultValue="English"
+                    value={bookLanguage}
+                    onChange={(e) => setBookLanguage(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#cfaf45]/50"
                   />
                 </div>
@@ -468,6 +571,8 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
                   <label className="text-xs font-semibold text-slate-700 mb-1 block">ISBN (optional)</label>
                   <input
                     name="isbn"
+                    value={bookIsbn}
+                    onChange={(e) => setBookIsbn(e.target.value)}
                     placeholder="e.g. 978-3-16-148410-0"
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#cfaf45]/50"
                   />
@@ -478,6 +583,8 @@ export function AdminUploadBookPage({ authors, accessToken }: Props) {
                 <label className="text-xs font-semibold text-slate-700 mb-1 block">Tags (comma-separated)</label>
                 <input
                   name="tags"
+                  value={bookTags}
+                  onChange={(e) => setBookTags(e.target.value)}
                   placeholder="e.g. adventure, magic, bestseller, audio"
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#cfaf45]/50"
                 />

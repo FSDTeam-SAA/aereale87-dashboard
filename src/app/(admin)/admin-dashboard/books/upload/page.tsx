@@ -7,11 +7,18 @@ import type { PaginatedAuthors } from "@/features/admin-dashboard/authors/types"
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminUploadBookRoute() {
+export default async function AdminUploadBookRoute({
+  searchParams,
+}: {
+  searchParams?: Promise<{ bookId?: string }> | { bookId?: string };
+}) {
   const session = await getServerSession(authOptions);
   if (!session || !["ADMIN", "SUPERADMIN"].includes(session.user.role)) {
     redirect("/");
   }
+
+  const resolvedSearchParams = await searchParams;
+  const bookId = resolvedSearchParams?.bookId;
 
   let authorsData: PaginatedAuthors = {
     authors: [],
@@ -31,6 +38,7 @@ export default async function AdminUploadBookRoute() {
     <AdminUploadBookPage
       authors={authorsData.authors}
       accessToken={session.accessToken}
+      bookId={bookId}
     />
   );
 }

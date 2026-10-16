@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle, XCircle, Search, Eye, ExternalLink, Download, FileText, FileAudio, ImageIcon } from "lucide-react";
+import { CheckCircle, XCircle, Search, Eye, ExternalLink, Download, FileText, FileAudio, ImageIcon, Pencil, Trash2, AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -32,6 +32,8 @@ export function AdminBooksApprovalPage({
   const [query, setQuery] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [detailBook, setDetailBook] = useState<AdminPendingBook | null>(null);
+  const [bookToDelete, setBookToDelete] = useState<AdminPendingBook | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const effectivePending = pendingData?.books || data?.books || [];
   const effectiveCatalog = catalogData?.books || effectivePending;
@@ -55,6 +57,35 @@ export function AdminBooksApprovalPage({
       toast.error((error instanceof Error ? error.message : null) || "Failed to process book.");
     } finally {
       setPendingId(null);
+    }
+  }
+
+  async function handleDeleteConfirm() {
+    if (!bookToDelete) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/v1"}/books/${bookToDelete.id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.message || "Failed to remove book");
+      }
+
+      toast.success(`"${bookToDelete.title}" removed successfully.`);
+      if (detailBook?.id === bookToDelete.id) {
+        setDetailBook(null);
+      }
+      setBookToDelete(null);
+      router.refresh();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Error deleting book.");
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -144,6 +175,7 @@ export function AdminBooksApprovalPage({
                     onApprove={() => handleApprove(book.id, "APPROVED")}
                     onReject={() => handleApprove(book.id, "REJECTED")}
                     onViewDetail={() => setDetailBook(book)}
+                    onDelete={() => setBookToDelete(book)}
                   />
                 ))}
               </tbody>
@@ -171,8 +203,54 @@ export function AdminBooksApprovalPage({
             handleApprove(detailBook.id, "REJECTED");
             setDetailBook(null);
           }}
+          onDelete={() => setBookToDelete(detailBook)}
           onClose={() => setDetailBook(null)}
         />
+      )}
+
+      {bookToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !isDeleting && setBookToDelete(null)}>
+          <div
+            className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="rounded-full bg-red-100 p-2">
+                <AlertTriangle className="size-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">Remove Book</h3>
+            </div>
+            <p className="mt-3 text-sm text-slate-600">
+              Are you sure you want to remove <span className="font-semibold text-slate-900">"{bookToDelete.title}"</span>? This will permanently delete this book, its associated formats, and files from the library.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setBookToDelete(null)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="size-4 mr-2 animate-spin" />
+                    Removing...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="size-4 mr-1.5" />
+                    Confirm Remove
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -185,6 +263,7 @@ function BookRow({
   onApprove,
   onReject,
   onViewDetail,
+  onDelete,
 }: {
   book: AdminPendingBook;
   isPending: boolean;
@@ -192,6 +271,7 @@ function BookRow({
   onApprove: () => void;
   onReject: () => void;
   onViewDetail: () => void;
+  onDelete: () => void;
 }) {
   const authorName = book.author?.profile
     ? `${book.author.profile.firstName || ""} ${book.author.profile.lastName || ""}`.trim()
@@ -291,16 +371,38 @@ function BookRow({
         )}
       </td>
       <td className="p-4">
-        <div className="flex justify-end gap-2">
+        <div className="flex items-center justify-end gap-1.5">
           <Button
             size="sm"
             variant="outline"
             className="text-slate-700 hover:bg-slate-50"
             onClick={onViewDetail}
+            title="View details"
           >
-            <Eye className="size-4 mr-1.5" />
+            <Eye className="size-4 mr-1" />
             View
           </Button>
+
+          <Link
+            href={`/admin-dashboard/books/upload?bookId=${book.id}`}
+            className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition"
+            title="Edit book"
+          >
+            <Pencil className="size-3.5 mr-1 text-slate-500" />
+            Edit
+          </Link>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+            onClick={onDelete}
+            title="Remove book"
+          >
+            <Trash2 className="size-3.5 mr-1" />
+            Remove
+          </Button>
+
           {showApprovalActions && (
             <>
               <Button
@@ -335,12 +437,14 @@ function BookDetailDialog({
   isPending,
   onApprove,
   onReject,
+  onDelete,
   onClose,
 }: {
   book: AdminPendingBook;
   isPending: boolean;
   onApprove: () => void;
   onReject: () => void;
+  onDelete: () => void;
   onClose: () => void;
 }) {
   const authorName = book.author?.profile
@@ -509,24 +613,44 @@ function BookDetailDialog({
           </div>
         </div>
 
-        <div className="sticky bottom-0 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
-          <Button
-            variant="outline"
-            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-            onClick={onReject}
-            disabled={isPending}
-          >
-            <XCircle className="size-4 mr-1.5" />
-            Reject
-          </Button>
-          <Button
-            className="bg-green-600 hover:bg-green-700 text-white"
-            onClick={onApprove}
-            disabled={isPending}
-          >
-            <CheckCircle className="size-4 mr-1.5" />
-            Approve
-          </Button>
+        <div className="sticky bottom-0 flex items-center justify-between border-t border-slate-200 bg-white px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/admin-dashboard/books/upload?bookId=${book.id}`}
+              className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 transition"
+            >
+              <Pencil className="size-4 mr-1.5 text-slate-500" />
+              Edit Book
+            </Link>
+            <Button
+              variant="outline"
+              className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+              onClick={onDelete}
+            >
+              <Trash2 className="size-4 mr-1.5" />
+              Remove Book
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+              onClick={onReject}
+              disabled={isPending}
+            >
+              <XCircle className="size-4 mr-1.5" />
+              Reject
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={onApprove}
+              disabled={isPending}
+            >
+              <CheckCircle className="size-4 mr-1.5" />
+              Approve
+            </Button>
+          </div>
         </div>
       </div>
     </div>

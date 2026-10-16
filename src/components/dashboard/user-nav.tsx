@@ -47,18 +47,7 @@ export function UserNav({ user }: UserNavProps) {
 
   return (
     <>
-      <div className="relative flex items-center gap-3" ref={menuRef}>
-        {/* Quick Sign Out button visible directly in topbar */}
-        <button
-          type="button"
-          onClick={() => setShowLogoutModal(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:border-red-400/40 hover:bg-red-500/20 hover:text-red-100 focus:outline-none focus:ring-2 focus:ring-white/20"
-          title="Sign out of your account"
-        >
-          <LogOut className="size-3.5" />
-          <span>Sign Out</span>
-        </button>
-
+      <div className="relative flex items-center" ref={menuRef}>
         {/* User profile dropdown trigger */}
         <button
           type="button"
