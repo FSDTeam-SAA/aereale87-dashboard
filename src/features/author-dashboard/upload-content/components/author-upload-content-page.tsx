@@ -18,6 +18,7 @@ import {
   Star,
   ShoppingBag,
   ExternalLink,
+  Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -160,6 +161,8 @@ export function AuthorUploadContentPage({
   const [previewLanguage, setPreviewLanguage] = useState("English");
   const [previewAgeGroup, setPreviewAgeGroup] = useState("Adult");
 
+  const [tagInputs, setTagInputs] = useState<string[]>(["", "", "", "", "", ""]);
+
   useEffect(() => {
     if (!bookId) return;
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/books/${bookId}`, {
@@ -180,6 +183,13 @@ export function AuthorUploadContentPage({
         if (payload.data.ageGroup) setPreviewAgeGroup(payload.data.ageGroup);
         if (payload.data.distributionPath) {
           setDistributionPath(payload.data.distributionPath);
+        }
+        if (Array.isArray(payload.data.tags)) {
+          const loadedTags = [...payload.data.tags];
+          while (loadedTags.length < 6) {
+            loadedTags.push("");
+          }
+          setTagInputs(loadedTags.slice(0, 6));
         }
       })
       .catch((error: Error) => toast.error(error.message || "Unable to load book."));
@@ -250,15 +260,10 @@ export function AuthorUploadContentPage({
       const value = source.get(key);
       if (value) body.set(key, value);
     });
-    body.set(
-      "tags",
-      JSON.stringify(
-        String(source.get("tags") || "")
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean),
-      ),
-    );
+    const processedTags = tagInputs
+      .map((t) => t.trim())
+      .filter(Boolean);
+    body.set("tags", JSON.stringify(processedTags));
     body.set(
       "formats",
       JSON.stringify(
@@ -405,7 +410,95 @@ export function AuthorUploadContentPage({
                 <option value="Children (ages 0–8)">Children (ages 0–8)</option>
               </SelectField>
             </div>
-            <Field label="Tags (comma separated)" name="tags" defaultValue={book?.tags.join(", ")} />
+            {/* Redesigned Tags Section: Separate individual fields (6 tags) */}
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Tag className="size-4 text-[#cfaf45]" />
+                  <span className="text-sm font-bold text-slate-800">
+                    Book Tags & Keywords
+                  </span>
+                </div>
+                <span className="text-xs text-slate-500">
+                  Add up to 6 individual tags to help readers discover your book
+                </span>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {tagInputs.map((tagVal, index) => (
+                  <div key={index} className="relative">
+                    <label className="block space-y-1">
+                      <span className="text-xs font-semibold text-slate-600">
+                        Tag {index + 1}
+                      </span>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          name={`tag_${index + 1}`}
+                          value={tagVal}
+                          placeholder={
+                            index === 0
+                              ? "e.g. Fantasy"
+                              : index === 1
+                              ? "e.g. Young Adult"
+                              : index === 2
+                              ? "e.g. Magic"
+                              : index === 3
+                              ? "e.g. Adventure"
+                              : index === 4
+                              ? "e.g. Mystery"
+                              : "e.g. Best Seller"
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setTagInputs((prev) => {
+                              const updated = [...prev];
+                              updated[index] = val;
+                              return updated;
+                            });
+                          }}
+                          className="h-10 w-full rounded border border-slate-300 bg-white px-3 pr-8 text-xs text-slate-800 outline-none transition focus:border-[#cfaf45] focus:ring-1 focus:ring-[#cfaf45]"
+                        />
+                        {tagVal && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTagInputs((prev) => {
+                                const updated = [...prev];
+                                updated[index] = "";
+                                return updated;
+                              });
+                            }}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            aria-label={`Clear tag ${index + 1}`}
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </label>
+                  </div>
+                ))}
+              </div>
+
+              {/* Live Tag Pills Preview */}
+              {tagInputs.some((t) => t.trim().length > 0) && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-xs font-medium text-slate-500 mr-1">Preview:</span>
+                  {tagInputs
+                    .map((t) => t.trim())
+                    .filter(Boolean)
+                    .map((t, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 rounded-full bg-[#cfaf45]/15 border border-[#cfaf45]/40 px-2.5 py-0.5 text-xs font-semibold text-[#8c7423]"
+                      >
+                        #{t}
+                      </span>
+                    ))}
+                </div>
+              )}
+            </div>
             <div>
               <FileField
                 label="Book cover (used for all formats)"
