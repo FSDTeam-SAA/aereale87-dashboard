@@ -10,9 +10,18 @@ const AuthorUploadContentPage = dynamic(
 export function AuthorUploadContentPageWrapper({
   accessToken,
   isFoundingAuthor,
+  authorName,
 }: {
   accessToken: string;
   isFoundingAuthor?: boolean;
+  authorName?: string;
 }) {
-  return <AuthorUploadContentPage accessToken={accessToken} isFoundingAuthor={isFoundingAuthor} />;
+  return (
+    <AuthorUploadContentPage
+      accessToken={accessToken}
+      isFoundingAuthor={isFoundingAuthor}
+      authorName={authorName}
+    />
+  );
 }
+

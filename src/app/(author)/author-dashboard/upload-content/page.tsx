@@ -28,10 +28,13 @@ export default async function UploadContentPage() {
     (await getIsFoundingAuthor(session.accessToken)) ||
     session.user.isFoundingAuthor === true;
 
+  const authorName = session.user.name || session.user.email || "Author";
+
   return (
     <AuthorUploadContentPageWrapper
       accessToken={session.accessToken}
       isFoundingAuthor={isFoundingAuthor}
+      authorName={authorName}
     />
   );
 }
