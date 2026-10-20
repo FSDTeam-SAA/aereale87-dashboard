@@ -277,7 +277,7 @@ function BookRow({
     ? `${book.author.profile.firstName || ""} ${book.author.profile.lastName || ""}`.trim()
     : null;
 
-  const displayName = authorName || book.author?.username || "Unknown Author";
+  const displayName = book.authorName || authorName || book.author?.username || "Unknown Author";
 
   return (
     <tr className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
@@ -450,7 +450,7 @@ function BookDetailDialog({
   const authorName = book.author?.profile
     ? `${book.author.profile.firstName || ""} ${book.author.profile.lastName || ""}`.trim()
     : null;
-  const displayName = authorName || book.author?.username || "Unknown Author";
+  const displayName = book.authorName || authorName || book.author?.username || "Unknown Author";
 
   const tagList = book.tags?.length ? book.tags : [];
 

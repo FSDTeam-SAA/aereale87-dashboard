@@ -2,6 +2,7 @@ export type BookStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
 
 export type BackendBook = {
   id: string;
+  authorName?: string | null;
   title: string;
   description: string | null;
   bookCover: string | null;

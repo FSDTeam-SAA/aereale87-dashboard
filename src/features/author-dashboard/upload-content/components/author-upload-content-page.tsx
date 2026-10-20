@@ -30,6 +30,7 @@ type PrintFormatKey = Extract<FormatKey, "HARDCOVER" | "PAPERBACK">;
 
 type EditBook = {
   title: string;
+  authorName?: string | null;
   description: string | null;
   bookCover?: string | null;
   isbn: string | null;
@@ -156,6 +157,7 @@ export function AuthorUploadContentPage({
 
   // Form field mirrors for live preview
   const [previewTitle, setPreviewTitle] = useState("");
+  const [previewAuthorName, setPreviewAuthorName] = useState(authorName);
   const [previewDescription, setPreviewDescription] = useState("");
   const [previewCategory, setPreviewCategory] = useState("Fiction");
   const [previewLanguage, setPreviewLanguage] = useState("English");
@@ -177,6 +179,7 @@ export function AuthorUploadContentPage({
           setCoverPreviewUrl(payload.data.bookCover);
         }
         if (payload.data.title) setPreviewTitle(payload.data.title);
+        if (payload.data.authorName) setPreviewAuthorName(payload.data.authorName);
         if (payload.data.description) setPreviewDescription(payload.data.description);
         if (payload.data.category) setPreviewCategory(payload.data.category);
         if (payload.data.language) setPreviewLanguage(payload.data.language);
@@ -256,7 +259,7 @@ export function AuthorUploadContentPage({
     const source = new FormData(event.currentTarget);
     if (!formats.length) return toast.error("Select at least one book format.");
     const body = new FormData();
-    ["title", "description", "isbn", "category", "language", "ageGroup"].forEach((key) => {
+    ["title", "authorName", "description", "isbn", "category", "language", "ageGroup"].forEach((key) => {
       const value = source.get(key);
       if (value) body.set(key, value);
     });
@@ -367,13 +370,27 @@ export function AuthorUploadContentPage({
                 </p>
               </div>
             ) : null}
-            <Field
-              label="Book title"
-              name="title"
-              defaultValue={book?.title}
-              onChange={(e) => setPreviewTitle(e.target.value)}
-              required
-            />
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field
+                label="Book title"
+                name="title"
+                defaultValue={book?.title}
+                onChange={(e) => setPreviewTitle(e.target.value)}
+                required
+              />
+              <div>
+                <Field
+                  label="Author / Pen Name"
+                  name="authorName"
+                  defaultValue={book?.authorName || authorName}
+                  onChange={(e) => setPreviewAuthorName(e.target.value)}
+                  placeholder="e.g. Pen name or display name"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Author name or pen name to display on this book. Defaults to your account name.
+                </p>
+              </div>
+            </div>
             <TextArea
               label="Description"
               name="description"
@@ -690,7 +707,7 @@ export function AuthorUploadContentPage({
           onTabChange={setPreviewTab}
           coverUrl={coverPreviewUrl}
           title={previewTitle || (book?.title ?? "")}
-          authorName={authorName || "Author Name"}
+          authorName={previewAuthorName || authorName || "Author Name"}
           description={previewDescription || (book?.description ?? "")}
           category={previewCategory || (book?.category ?? "General")}
           language={previewLanguage || (book?.language ?? "English")}

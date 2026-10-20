@@ -14,6 +14,7 @@ export type AdminPendingBookFile = {
 
 export type AdminPendingBook = {
   id: string;
+  authorName?: string | null;
   title: string;
   description: string | null;
   isbn: string | null;
