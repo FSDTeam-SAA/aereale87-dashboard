@@ -16,6 +16,8 @@ import {
   Globe,
   User,
   Hash,
+  Download,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -207,16 +209,29 @@ export function TaxFormsPage({ accessToken }: TaxFormsPageProps) {
   const [taxpayerName, setTaxpayerName] = useState("");
   const [taxId, setTaxId] = useState("");
   const [taxCountry, setTaxCountry] = useState("US");
+  const [uploadedTaxFormUrl, setUploadedTaxFormUrl] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
       try {
         const res = await fetch("/api/author/tax-forms", { headers: { Authorization: `Bearer ${accessToken}` } });
         if (res.ok) {
-          const data = (await res.json()) as { kycStatus?: KycStatus; adminNote?: string; submittedAt?: string };
+          const data = (await res.json()) as {
+            kycStatus?: KycStatus;
+            adminNote?: string;
+            submittedAt?: string;
+            taxFormFileUrl?: string;
+            taxFormType?: string;
+            taxpayerName?: string;
+            taxCountry?: string;
+          };
           setKycStatus(data.kycStatus ?? "NOT_SUBMITTED");
           setKycAdminNote(data.adminNote ?? null);
           setKycSubmittedAt(data.submittedAt ?? null);
+          if (data.taxFormFileUrl) setUploadedTaxFormUrl(data.taxFormFileUrl);
+          if (data.taxFormType) setTaxFormType(data.taxFormType);
+          if (data.taxpayerName) setTaxpayerName(data.taxpayerName);
+          if (data.taxCountry) setTaxCountry(data.taxCountry);
         }
       } catch {
         // ignore
@@ -336,6 +351,20 @@ export function TaxFormsPage({ accessToken }: TaxFormsPageProps) {
                 Submitted {new Date(kycSubmittedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
               </p>
             )}
+            {uploadedTaxFormUrl && (
+              <div className="mt-3">
+                <a
+                  href={uploadedTaxFormUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-50"
+                >
+                  <FileText className="size-3.5 text-amber-600" />
+                  <span>View Submitted W-9 Form</span>
+                  <ExternalLink className="size-3 text-amber-700" />
+                </a>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -402,13 +431,63 @@ export function TaxFormsPage({ accessToken }: TaxFormsPageProps) {
 
           {/* Tax Form Section */}
           <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-stone-200">
-            <div className="mb-6 flex items-center gap-2 border-b border-stone-100 pb-4">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-[#cfaf45]">
-                <FileText className="size-4 text-white" />
+            <div className="mb-6 flex items-center justify-between border-b border-stone-100 pb-4">
+              <div className="flex items-center gap-2">
+                <div className="flex size-8 items-center justify-center rounded-lg bg-[#cfaf45]">
+                  <FileText className="size-4 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-neutral-900">Step 2 — Tax Information</h2>
+                  <p className="text-xs text-neutral-500">Required by financial regulations for authors receiving payouts</p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-base font-bold text-neutral-900">Step 2 — Tax Information</h2>
-                <p className="text-xs text-neutral-500">Required by financial regulations for authors receiving payouts</p>
+
+              {uploadedTaxFormUrl && (
+                <a
+                  href={uploadedTaxFormUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100"
+                >
+                  <FileText className="size-3.5 text-amber-600" />
+                  <span>View Uploaded W-9</span>
+                  <ExternalLink className="size-3 text-amber-700" />
+                </a>
+              )}
+            </div>
+
+            {/* Download Blank Tax Forms Callout */}
+            <div className="mb-6 rounded-xl border border-amber-200 bg-[#fdfaf3] p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <FileText className="size-4 text-[#8a6e19]" />
+                  <p className="text-sm font-bold text-neutral-900">Need a W-9 form to fill out?</p>
+                </div>
+                <p className="text-xs text-neutral-600 max-w-xl">
+                  Download the official IRS W-9 form below, complete your details, sign it, and upload the completed PDF document.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <a
+                  href="https://www.irs.gov/pub/irs-pdf/fw9.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#24352f] px-3.5 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#192621] transition"
+                >
+                  <Download className="size-3.5 text-[#cfaf45]" />
+                  <span>Download Blank W-9</span>
+                  <ExternalLink className="size-3 text-white/70" />
+                </a>
+                <a
+                  href="https://www.irs.gov/pub/irs-pdf/fw8ben.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 shadow-sm hover:bg-stone-50 transition"
+                >
+                  <Download className="size-3.5 text-stone-500" />
+                  <span>Form W-8BEN (Non-US)</span>
+                  <ExternalLink className="size-3 text-stone-400" />
+                </a>
               </div>
             </div>
 

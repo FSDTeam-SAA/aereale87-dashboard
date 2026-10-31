@@ -37,6 +37,7 @@ export function AdminUploadBookPage({ authors, accessToken, bookId }: Props) {
   // Loaded book state for edit mode
   const [initialLoading, setInitialLoading] = useState(Boolean(bookId));
   const [bookTitle, setBookTitle] = useState("");
+  const [authorName, setAuthorName] = useState("");
   const [bookDescription, setBookDescription] = useState("");
   const [bookCategory, setBookCategory] = useState("Fiction");
   const [bookAgeGroup, setBookAgeGroup] = useState("Adult");
@@ -92,6 +93,7 @@ export function AdminUploadBookPage({ authors, accessToken, bookId }: Props) {
         const data = payload.data || payload;
 
         if (data.title) setBookTitle(data.title);
+        if (data.authorName) setAuthorName(data.authorName);
         if (data.description) setBookDescription(data.description);
         if (data.category) setBookCategory(data.category);
         if (data.ageGroup) setBookAgeGroup(data.ageGroup);
@@ -207,6 +209,8 @@ export function AdminUploadBookPage({ authors, accessToken, bookId }: Props) {
 
     // Basic Metadata
     body.append("title", String(formData.get("title") || ""));
+    const authorNameVal = String(formData.get("authorName") || authorName || "").trim();
+    if (authorNameVal) body.append("authorName", authorNameVal);
     body.append("description", String(formData.get("description") || ""));
     body.append("category", String(formData.get("category") || ""));
     body.append("language", String(formData.get("language") || "English"));
@@ -421,7 +425,17 @@ export function AdminUploadBookPage({ authors, accessToken, bookId }: Props) {
                   </label>
                   <select
                     value={selectedAuthorId}
-                    onChange={(e) => setSelectedAuthorId(e.target.value)}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      setSelectedAuthorId(id);
+                      const found = authors.find((a) => a.id === id);
+                      if (found) {
+                        const calculated =
+                          `${found.profile?.firstName || ""} ${found.profile?.lastName || ""}`.trim() ||
+                          found.username;
+                        if (calculated) setAuthorName(calculated);
+                      }
+                    }}
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-[#cfaf45]/50"
                   >
                     <option value="">Choose an author...</option>
@@ -493,16 +507,30 @@ export function AdminUploadBookPage({ authors, accessToken, bookId }: Props) {
                 <h2 className="text-base font-bold text-slate-900">Book Information</h2>
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-700 mb-1 block">Book Title *</label>
-                <input
-                  name="title"
-                  required
-                  value={bookTitle}
-                  onChange={(e) => setBookTitle(e.target.value)}
-                  placeholder="e.g. Echoes of the Enchanted Grove"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#cfaf45]/50"
-                />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 mb-1 block">Book Title *</label>
+                  <input
+                    name="title"
+                    required
+                    value={bookTitle}
+                    onChange={(e) => setBookTitle(e.target.value)}
+                    placeholder="e.g. Echoes of the Enchanted Grove"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#cfaf45]/50"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 mb-1 block">Author / Writer Name *</label>
+                  <input
+                    name="authorName"
+                    required
+                    value={authorName}
+                    onChange={(e) => setAuthorName(e.target.value)}
+                    placeholder="e.g. A.L Sykes or Eleanor Whitfield"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#cfaf45]/50"
+                  />
+                </div>
               </div>
 
               <div>

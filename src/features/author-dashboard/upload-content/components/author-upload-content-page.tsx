@@ -19,11 +19,14 @@ import {
   ShoppingBag,
   ExternalLink,
   Tag,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PDFDocument } from "pdf-lib";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { BookPreviewModal } from "@/features/author-dashboard/books/components/book-preview-modal";
 
 type FormatKey = "EBOOK" | "AUDIOBOOK" | "HARDCOVER" | "PAPERBACK";
 type PrintFormatKey = Extract<FormatKey, "HARDCOVER" | "PAPERBACK">;
@@ -73,6 +76,8 @@ type MatchResult = {
     basePriceUSD: number;
     perPagePriceUSD: number;
   } | null;
+  pageCount?: number;
+  trimSize?: string;
 };
 
 type PrintFileValidationResult = {
@@ -99,6 +104,126 @@ const formatLabels: Record<FormatKey, string> = {
   HARDCOVER: "Hardcover",
   PAPERBACK: "Paperback",
 };
+
+async function fileToJpegOrPngBuffer(file: File): Promise<{ buffer: ArrayBuffer; isPng: boolean }> {
+  if (file.type === "image/png" || file.name.toLowerCase().endsWith(".png")) {
+    return { buffer: await file.arrayBuffer(), isPng: true };
+  }
+  if (file.type === "image/jpeg" || file.type === "image/jpg" || /\.(jpe?g)$/i.test(file.name)) {
+    return { buffer: await file.arrayBuffer(), isPng: false };
+  }
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("Canvas context initialization failed"));
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob(async (blob) => {
+        if (!blob) return reject(new Error("Image conversion failed"));
+        resolve({ buffer: await blob.arrayBuffer(), isPng: false });
+      }, "image/jpeg", 0.95);
+    };
+    img.onerror = () => reject(new Error("Failed to load image for conversion"));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function prepareCoverPdf(file: File): Promise<File> {
+  if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+    return file;
+  }
+  const { buffer, isPng } = await fileToJpegOrPngBuffer(file);
+  const pdfDoc = await PDFDocument.create();
+  const image = isPng ? await pdfDoc.embedPng(buffer) : await pdfDoc.embedJpg(buffer);
+
+  // At 300 DPI: points = px * (72 / 300) = px * 0.24
+  let widthPoints: number;
+  let heightPoints: number;
+  if (image.width > 1200) {
+    widthPoints = image.width * (72 / 300);
+    heightPoints = image.height * (72 / 300);
+  } else {
+    widthPoints = image.width;
+    heightPoints = image.height;
+  }
+
+  const page = pdfDoc.addPage([widthPoints, heightPoints]);
+  page.drawImage(image, {
+    x: 0,
+    y: 0,
+    width: widthPoints,
+    height: heightPoints,
+  });
+
+  const pdfBytes = await pdfDoc.save();
+  const pdfBlob = new Blob([pdfBytes as unknown as BlobPart], { type: "application/pdf" });
+  const baseName = file.name.replace(/\.[^/.]+$/, "");
+  return new File([pdfBlob], `${baseName}-spread.pdf`, { type: "application/pdf" });
+}
+
+function PrintCoverSizingGuide({
+  format,
+  pageCount = 32,
+  trimSize = "US Trade (5 x 8)",
+}: {
+  format: "HARDCOVER" | "PAPERBACK";
+  pageCount?: number;
+  trimSize?: string;
+}) {
+  const isHardcover = format === "HARDCOVER";
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50/80 p-4 space-y-3">
+      <div className="flex items-start gap-2.5">
+        <Info className="size-5 text-amber-700 shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <h4 className="text-sm font-bold text-amber-900">
+            {isHardcover ? "Hardcover (Casewrap) Full Spread Requirements" : "Paperback Full Spread Requirements"}
+          </h4>
+          <p className="text-xs text-amber-800 leading-relaxed">
+            {isHardcover ? (
+              <>
+                Lulu casewrap hardcovers require a <strong>single full-spread file</strong> covering the <strong>Back Cover + Spine + Front Cover</strong> plus <strong>0.625&quot; fold-over casing wrap</strong> on all 4 sides. A single front cover alone (e.g. 5&quot; x 8&quot; or 5.06&quot; x 7.18&quot;) will be rejected by the printer because it cannot wrap around the book boards.
+              </>
+            ) : (
+              <>
+                Paperbacks require a <strong>single full-spread file</strong> covering the <strong>Back Cover + Spine + Front Cover</strong> plus <strong>0.125&quot; trim bleed</strong>.
+              </>
+            )}
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded border border-amber-200 bg-white p-3 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-700">
+          <span>Required Spread Dimensions for {isHardcover ? "Hardcover" : "Paperback"} (5 x 8 in, ~{pageCount || 32} pages):</span>
+          <span className="rounded bg-amber-100 px-2 py-0.5 font-mono text-amber-900 font-bold">
+            {isHardcover ? "12.44\" - 12.56\" x 9.69\" - 9.81\"" : "10.30\" x 8.25\""}
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-1 rounded bg-slate-100 p-2 text-center text-[11px] font-medium text-slate-600 border border-slate-200">
+          <div className="rounded bg-white p-1.5 shadow-xs border border-slate-200">
+            <span className="block font-bold text-slate-800">Back Cover</span>
+            <span>~5.0 in</span>
+          </div>
+          <div className="rounded bg-amber-50 p-1.5 shadow-xs border border-amber-200">
+            <span className="block font-bold text-amber-900">Spine</span>
+            <span>~{isHardcover ? "0.25 - 0.40" : "0.15 - 0.25"} in</span>
+          </div>
+          <div className="rounded bg-white p-1.5 shadow-xs border border-slate-200">
+            <span className="block font-bold text-slate-800">Front Cover</span>
+            <span>~5.0 in</span>
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-500">
+          💡 <strong>Pixel recommendation at 300 DPI:</strong> {isHardcover ? "3,750 x 2,925 pixels" : "3,100 x 2,475 pixels"}. Upload either a PDF spread or a high-res JPEG/PNG (we automatically format it into a print-ready container).
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export function AuthorUploadContentPage({
   accessToken,
@@ -227,11 +352,21 @@ export function AuthorUploadContentPage({
     if (!form) return;
     const source = new FormData(form);
     const interiorPdf = source.get("interiorPdf");
-    const coverPdf = source.get("coverPdf");
+    let coverPdf = source.get("coverPdf");
     const match = matchedSpecs[format];
     if (!match?.sku) return toast.error("Choose a valid print configuration before validating files.");
     if (!(interiorPdf instanceof File) || !interiorPdf.size || !(coverPdf instanceof File) || !coverPdf.size) {
-      return toast.error("Choose both Interior PDF and Cover PDF before validation.");
+      return toast.error("Choose both Interior PDF and Cover file before validation.");
+    }
+
+    if (coverPdf.type.startsWith("image/") || /\.(jpe?g|png|webp)$/i.test(coverPdf.name)) {
+      try {
+        toast.info("Packaging cover image into print spread PDF...");
+        coverPdf = await prepareCoverPdf(coverPdf);
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : "Unknown error";
+        return toast.error("Could not prepare cover image: " + errorMsg);
+      }
     }
 
     const body = new FormData();
@@ -279,11 +414,23 @@ export function AuthorUploadContentPage({
       ),
     );
 
-    const fileFields = ["bookCover", "ebook", "audiobook", "interiorPdf", "coverPdf"] as const;
+    const fileFields = ["bookCover", "ebook", "audiobook", "interiorPdf"] as const;
     fileFields.forEach((field) => {
       const file = source.get(field);
       if (file instanceof File && file.size > 0) body.set(field, file);
     });
+
+    let coverFile = source.get("coverPdf");
+    if (coverFile instanceof File && coverFile.size > 0) {
+      if (coverFile.type.startsWith("image/") || /\.(jpe?g|png|webp)$/i.test(coverFile.name)) {
+        try {
+          coverFile = await prepareCoverPdf(coverFile);
+        } catch {
+          // fallback to original file if preparation fails
+        }
+      }
+      body.set("coverPdf", coverFile);
+    }
 
     const printFormat = formats.find((format): format is PrintFormatKey => format === "HARDCOVER" || format === "PAPERBACK");
     const hasPrint = Boolean(printFormat);
@@ -291,7 +438,7 @@ export function AuthorUploadContentPage({
       const interiorPdf = source.get("interiorPdf");
       const coverPdf = source.get("coverPdf");
       if (!bookId && (!(interiorPdf instanceof File) || !interiorPdf.size || !(coverPdf instanceof File) || !coverPdf.size)) {
-        return toast.error("Print editions require both interior and cover PDF files.");
+        return toast.error("Print editions require both interior and cover files.");
       }
       const selectedPrintFormat = printFormat as PrintFormatKey;
       const matchResult = matchedSpecs[selectedPrintFormat];
@@ -574,11 +721,20 @@ export function AuthorUploadContentPage({
                 {["HARDCOVER", "PAPERBACK"].includes(format) && (
                   <>
                     <p className="rounded bg-amber-50 p-3 text-sm text-amber-900 border border-amber-200">
-                      Print editions require print-ready interior and cover PDF files.
+                      Print editions require print-ready interior PDF and full-spread cover (PDF, JPEG, or PNG).
                     </p>
+                    <PrintCoverSizingGuide
+                      format={format as "HARDCOVER" | "PAPERBACK"}
+                      pageCount={matchedSpecs[format]?.pageCount || book?.formats.find((item) => item.formatType === format)?.pageCount || 32}
+                      trimSize={matchedSpecs[format]?.trimSize}
+                    />
                     <div className="grid gap-4 sm:grid-cols-2">
                       <FileField label="Interior PDF" name="interiorPdf" accept="application/pdf" onChange={handleEbookFileChange} />
-                      <FileField label="Cover PDF" name="coverPdf" accept="application/pdf" />
+                      <FileField
+                        label="Cover File (Spread PDF, JPEG, or PNG)"
+                        name="coverPdf"
+                        accept=".pdf,image/jpeg,image/png,image/webp"
+                      />
                     </div>
                     <PrintSpecSelector format={format as PrintFormatKey} accessToken={accessToken} specOptions={specOptions} onMatch={handleSpecMatch} defaultPageCount={book?.formats.find((item) => item.formatType === format)?.pageCount} />
                     <div className="rounded border border-slate-200 bg-white p-4">
@@ -621,6 +777,8 @@ export function AuthorUploadContentPage({
             isFoundingAuthor={isFoundingAuthor}
             distributionPath={distributionPath}
             onDistributionPathChange={setDistributionPath}
+            formats={formats}
+            matchedSpecs={matchedSpecs}
           />
         </CardContent>
       </Card>
@@ -683,12 +841,18 @@ export function AuthorUploadContentPage({
       </Card>
       <div className="flex flex-wrap items-center gap-3">
         <button
-          disabled={pending || (book != null && !["DRAFT", "REJECTED"].includes(book.status))}
+          disabled={pending}
           className="inline-flex h-12 items-center gap-2 rounded-md bg-[#cfaf45] px-6 font-semibold text-white hover:bg-[#b79731] disabled:opacity-50 shadow-sm"
         >
           <Save className="size-4" />
           {pending ? "Saving..." : bookId ? "Save changes" : "Create draft"}
         </button>
+        {book?.status === "APPROVED" && (
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 border border-emerald-200">
+            <span className="size-2 rounded-full bg-emerald-500" />
+            Live Book — changes will update the published listing
+          </span>
+        )}
         <button
           type="button"
           onClick={() => setShowPreviewModal(true)}
@@ -703,8 +867,7 @@ export function AuthorUploadContentPage({
         <BookPreviewModal
           isOpen={showPreviewModal}
           onClose={() => setShowPreviewModal(false)}
-          activeTab={previewTab}
-          onTabChange={setPreviewTab}
+          initialTab={previewTab}
           coverUrl={coverPreviewUrl}
           title={previewTitle || (book?.title ?? "")}
           authorName={previewAuthorName || authorName || "Author Name"}
@@ -714,12 +877,6 @@ export function AuthorUploadContentPage({
           ageGroup={previewAgeGroup || (book?.ageGroup ?? "Adult")}
           formats={formats}
           ebookFileName={ebookFileName}
-          readerPage={readerPage}
-          onPageChange={setReaderPage}
-          readerTheme={readerTheme}
-          onThemeChange={setReaderTheme}
-          readerFontSize={readerFontSize}
-          onFontSizeChange={setReaderFontSize}
         />
       )}
     </form>
@@ -880,12 +1037,17 @@ function PrintSpecSelector({
         const payload = await response.json();
         const data = unwrapApiData<MatchResult>(payload);
         if (response.ok && data) {
-          setMatchResult(data);
-          onMatch(format, data);
+          const enriched: MatchResult = {
+            ...data,
+            pageCount: Number(pageCount),
+            trimSize: selectedBookType,
+          };
+          setMatchResult(enriched);
+          onMatch(format, enriched);
         }
       } catch {
         setMatchResult(null);
-        onMatch(format, { found: false, sku: null, minPage: null, maxPage: null, pricing: null });
+        onMatch(format, { found: false, sku: null, minPage: null, maxPage: null, pricing: null, pageCount: Number(pageCount), trimSize: selectedBookType });
       }
     };
 
@@ -1034,101 +1196,282 @@ function RoyaltyCalculator({
   isFoundingAuthor = false,
   distributionPath = "exclusive",
   onDistributionPathChange,
+  formats = ["EBOOK"],
+  matchedSpecs = {},
 }: {
   isFoundingAuthor?: boolean;
   distributionPath?: "exclusive" | "wide";
   onDistributionPathChange?: (path: "exclusive" | "wide") => void;
+  formats?: FormatKey[];
+  matchedSpecs?: Record<string, MatchResult>;
 }) {
-  const [listingPrice, setListingPrice] = useState<string>("");
+  const [selectedFormat, setSelectedFormat] = useState<FormatKey>(
+    formats.includes("HARDCOVER")
+      ? "HARDCOVER"
+      : formats.includes("PAPERBACK")
+      ? "PAPERBACK"
+      : formats[0] || "EBOOK"
+  );
+
+  useEffect(() => {
+    if (!formats.includes(selectedFormat) && formats.length > 0) {
+      setSelectedFormat(formats[0]);
+    }
+  }, [formats, selectedFormat]);
+
+  const [listingPrice, setListingPrice] = useState<string>("24.99");
   const price = parseFloat(listingPrice) || 0;
 
-  // Founding authors: 85% author, 15% platform across the board
-  // Standard authors: 65% for WE Exclusive, 45% for Wide Distribution
+  const isPrint = selectedFormat === "HARDCOVER" || selectedFormat === "PAPERBACK";
+
+  const match = matchedSpecs[selectedFormat];
+  const defaultBaseCost = selectedFormat === "HARDCOVER" ? 10.68 : 3.50;
+  const defaultPerPage = selectedFormat === "HARDCOVER" ? 0.037 : 0.018;
+  const baseCost = match?.pricing?.basePriceUSD ?? defaultBaseCost;
+  const perPageCost = match?.pricing?.perPagePriceUSD ?? defaultPerPage;
+  const pageCount = match?.pageCount ?? 32;
+
+  const [customPages, setCustomPages] = useState<string>(String(pageCount));
+  useEffect(() => {
+    if (match?.pageCount) setCustomPages(String(match.pageCount));
+  }, [match?.pageCount]);
+
+  const activePages = parseInt(customPages, 10) || pageCount;
+  const manufacturingCost = isPrint ? +(baseCost + (perPageCost * activePages)).toFixed(2) : 0;
+
   const authorPercentage = isFoundingAuthor
     ? 0.85
     : distributionPath === "exclusive"
     ? 0.65
     : 0.45;
   const adminPercentage = 1 - authorPercentage;
-  const authorEarnings = price * authorPercentage;
-  const adminEarnings = price * adminPercentage;
+
+  const netPool = Math.max(0, price - manufacturingCost);
+  const authorEarnings = netPool * authorPercentage;
+  const adminEarnings = netPool * adminPercentage;
+
+  const isBelowCost = isPrint && price > 0 && price < manufacturingCost;
+  const recommendedMinPrice = isPrint ? (manufacturingCost * 1.25).toFixed(2) : "4.99";
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <div className="space-y-4">
-        <div>
-          <label htmlFor="listing-price" className="block text-sm font-medium text-slate-700">
-            Book Listing Price (USD)
-          </label>
-          <Input
-            id="listing-price"
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="0.00"
-            value={listingPrice}
-            onChange={(e) => setListingPrice(e.target.value)}
-            className="mt-1 bg-slate-50 focus-visible:ring-[#cb9f10]"
-          />
-        </div>
-
-        {isFoundingAuthor ? (
-          <div className="rounded border border-[#d6c38a] bg-[#fbf9f2] p-3 text-xs text-slate-700 space-y-1">
-            <p className="font-bold text-[#8c7423]">
-              ★ Founding Author Royalty: 85% Author / 15% Company
-            </p>
-            <p className="text-slate-600">
-              Your royalty rate is permanently locked at 85% across all formats. Exclusivity tier variations do not apply to your account.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <span className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Distribution Model (Exclusivity)
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => onDistributionPathChange?.("exclusive")}
-                className={`rounded border px-3 py-2 text-xs font-semibold transition ${
-                  distributionPath === "exclusive"
-                    ? "border-[#cfaf45] bg-[#cfaf45]/15 text-[#8c7423] font-bold shadow-sm"
-                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                WE Exclusive (65%)
-              </button>
-              <button
-                type="button"
-                onClick={() => onDistributionPathChange?.("wide")}
-                className={`rounded border px-3 py-2 text-xs font-semibold transition ${
-                  distributionPath === "wide"
-                    ? "border-[#cfaf45] bg-[#cfaf45]/15 text-[#8c7423] font-bold shadow-sm"
-                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                Wide (45%)
-              </button>
-            </div>
-            <p className="text-xs text-slate-500">
-              Exclusivity percentages apply to authors joining after the founding 100 authors.
-            </p>
-          </div>
-        )}
+    <div className="space-y-6">
+      {/* Format Selector Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-500 mr-2">
+          Calculate For Format:
+        </span>
+        {(["EBOOK", "HARDCOVER", "PAPERBACK", "AUDIOBOOK"] as FormatKey[]).map((fmt) => {
+          const isEnabled = formats.includes(fmt);
+          const isSelected = selectedFormat === fmt;
+          return (
+            <button
+              key={fmt}
+              type="button"
+              onClick={() => {
+                setSelectedFormat(fmt);
+                if (fmt === "EBOOK") setListingPrice("9.99");
+                else if (fmt === "HARDCOVER") setListingPrice("24.99");
+                else if (fmt === "PAPERBACK") setListingPrice("14.99");
+                else if (fmt === "AUDIOBOOK") setListingPrice("19.99");
+              }}
+              className={`rounded-md px-3.5 py-1.5 text-xs font-bold transition flex items-center gap-1.5 ${
+                isSelected
+                  ? "bg-[#cfaf45] text-white shadow-sm"
+                  : isEnabled
+                  ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  : "bg-slate-50 text-slate-400 border border-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              <span>{formatLabels[fmt]}</span>
+              {isEnabled && <span className="size-1.5 rounded-full bg-white/70" />}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="rounded-lg bg-lime-50 p-4 border border-[#e8e0cc] flex flex-col justify-center">
-        <div className="flex justify-between items-center border-b border-[#d5d2cb] pb-2 mb-2">
-          <span className="text-sm font-medium text-slate-600">
-            Your Earnings ({Math.round(authorPercentage * 100)}%)
-          </span>
-          <span className="text-xl font-bold text-teal-950">${authorEarnings.toFixed(2)}</span>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="listing-price" className="block text-sm font-semibold text-slate-700">
+                Book Listing Price (USD)
+              </label>
+              <Input
+                id="listing-price"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={listingPrice}
+                onChange={(e) => setListingPrice(e.target.value)}
+                className="mt-1 bg-slate-50 focus-visible:ring-[#cb9f10]"
+              />
+            </div>
+            {isPrint && (
+              <div>
+                <label htmlFor="calc-pages" className="block text-sm font-semibold text-slate-700">
+                  Page Count for Printing
+                </label>
+                <Input
+                  id="calc-pages"
+                  type="number"
+                  min="1"
+                  value={customPages}
+                  onChange={(e) => setCustomPages(e.target.value)}
+                  className="mt-1 bg-slate-50 focus-visible:ring-[#cb9f10]"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Print Cost Explanation Box */}
+          {isPrint ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3.5 space-y-2 text-xs text-slate-600">
+              <div className="flex items-center justify-between font-semibold text-slate-800">
+                <span>Lulu Print-on-Demand Manufacturing Cost:</span>
+                <span className="font-mono text-sm font-bold text-slate-900">${manufacturingCost.toFixed(2)}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 pt-1 border-t border-slate-200">
+                <div>Base Binding Cost: ${baseCost.toFixed(2)}</div>
+                <div>Per Page ({activePages} pgs @ ${perPageCost.toFixed(3)}): ${(perPageCost * activePages).toFixed(2)}</div>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Print manufacturing costs are deducted directly from customer payment before royalties are split.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-xs text-slate-600">
+              <span className="font-semibold text-slate-800">Digital Delivery: </span>
+              Zero printing cost. 100% of the sale price goes directly into the royalty split pool.
+            </div>
+          )}
+
+          {isFoundingAuthor ? (
+            <div className="rounded-md border border-[#d6c38a] bg-[#fbf9f2] p-3 text-xs text-slate-700 space-y-1">
+              <p className="font-bold text-[#8c7423]">
+                ★ Founding Author Royalty: 85% Author / 15% Platform
+              </p>
+              <p className="text-slate-600">
+                Your royalty rate is permanently locked at 85% net earnings across all formats.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <span className="block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Distribution Model (Exclusivity)
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => onDistributionPathChange?.("exclusive")}
+                  className={`rounded border px-3 py-2 text-xs font-semibold transition ${
+                    distributionPath === "exclusive"
+                      ? "border-[#cfaf45] bg-[#cfaf45]/15 text-[#8c7423] font-bold shadow-sm"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  WE Exclusive (65%)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDistributionPathChange?.("wide")}
+                  className={`rounded border px-3 py-2 text-xs font-semibold transition ${
+                    distributionPath === "wide"
+                      ? "border-[#cfaf45] bg-[#cfaf45]/15 text-[#8c7423] font-bold shadow-sm"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  Wide (45%)
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="flex justify-between items-center">
-          <span className="text-sm font-medium text-slate-600">
-            Platform Fee ({Math.round(adminPercentage * 100)}%)
-          </span>
-          <span className="text-lg font-bold text-slate-700">${adminEarnings.toFixed(2)}</span>
+
+        {/* Breakdown Card */}
+        <div className="rounded-lg bg-gradient-to-br from-amber-50/60 to-slate-50 p-5 border border-[#e8e0cc] flex flex-col justify-between space-y-4 shadow-xs">
+          <div className="space-y-3">
+            <h4 className="text-sm font-bold uppercase tracking-wider text-slate-700">
+              Earnings Breakdown ({formatLabels[selectedFormat]})
+            </h4>
+
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between items-center text-slate-700">
+                <span>Retail List Price</span>
+                <span className="font-bold font-mono">${price.toFixed(2)}</span>
+              </div>
+
+              {isPrint && (
+                <div className="flex justify-between items-center text-red-600 text-xs">
+                  <span>Less Print Manufacturing Cost</span>
+                  <span className="font-mono font-semibold">-${manufacturingCost.toFixed(2)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center border-t border-slate-200 pt-2 font-semibold text-slate-900">
+                <span>Net Royalty Pool</span>
+                <span className="font-mono">${netPool.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {isBelowCost && (
+              <div className="rounded border border-red-300 bg-red-50 p-2.5 text-xs text-red-700">
+                ⚠️ <strong>Notice:</strong> List price (${price.toFixed(2)}) is below the print cost (${manufacturingCost.toFixed(2)}). Books cannot be printed at a loss. Recommended minimum price is <strong>${recommendedMinPrice}</strong>.
+              </div>
+            )}
+
+            {/* Visual Profit Distribution Bar */}
+            {price > 0 && (
+              <div className="space-y-1 pt-1">
+                <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-200">
+                  {isPrint && manufacturingCost > 0 && (
+                    <div
+                      style={{ width: `${Math.min(100, (manufacturingCost / price) * 100)}%` }}
+                      className="bg-amber-400"
+                      title={`Print Cost: $${manufacturingCost.toFixed(2)}`}
+                    />
+                  )}
+                  {authorEarnings > 0 && (
+                    <div
+                      style={{ width: `${Math.min(100, (authorEarnings / price) * 100)}%` }}
+                      className="bg-emerald-600"
+                      title={`Author Royalty: $${authorEarnings.toFixed(2)}`}
+                    />
+                  )}
+                  {adminEarnings > 0 && (
+                    <div
+                      style={{ width: `${Math.min(100, (adminEarnings / price) * 100)}%` }}
+                      className="bg-slate-400"
+                      title={`Platform Fee: $${adminEarnings.toFixed(2)}`}
+                    />
+                  )}
+                </div>
+                <div className="flex justify-between text-[10px] text-slate-500 font-medium">
+                  {isPrint && <span>🟡 Print Mfg</span>}
+                  <span>🟢 Your Royalty</span>
+                  <span>⚪ Platform</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg bg-white p-4 border border-emerald-200/80 shadow-xs space-y-2 mt-2">
+            <div className="flex justify-between items-center">
+              <div>
+                <span className="block text-xs font-semibold uppercase tracking-wider text-emerald-800">
+                  Your Net Royalties ({Math.round(authorPercentage * 100)}%)
+                </span>
+                <span className="text-xs text-slate-500">Per book sold</span>
+              </div>
+              <span className="text-2xl font-black text-emerald-700 font-mono">
+                ${authorEarnings.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-xs text-slate-500 pt-1 border-t border-slate-100">
+              <span>Platform Share ({Math.round(adminPercentage * 100)}%)</span>
+              <span className="font-semibold text-slate-700 font-mono">${adminEarnings.toFixed(2)}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1200,480 +1543,3 @@ function DistributionPathCard({
   );
 }
 
-interface BookPreviewModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  activeTab: "cover" | "reader";
-  onTabChange: (tab: "cover" | "reader") => void;
-  coverUrl: string | null;
-  title: string;
-  authorName: string;
-  description: string;
-  category: string;
-  language: string;
-  ageGroup: string;
-  formats: FormatKey[];
-  ebookFileName: string | null;
-  readerPage: number;
-  onPageChange: (page: number) => void;
-  readerTheme: "light" | "sepia" | "dark";
-  onThemeChange: (theme: "light" | "sepia" | "dark") => void;
-  readerFontSize: number;
-  onFontSizeChange: (size: number) => void;
-}
-
-function BookPreviewModal({
-  isOpen,
-  onClose,
-  activeTab,
-  onTabChange,
-  coverUrl,
-  title,
-  authorName,
-  description,
-  category,
-  language,
-  ageGroup,
-  formats,
-  ebookFileName,
-  readerPage,
-  onPageChange,
-  readerTheme,
-  onThemeChange,
-  readerFontSize,
-  onFontSizeChange,
-}: BookPreviewModalProps) {
-  if (!isOpen) return null;
-
-  const displayTitle = title.trim() || "Untitled Book";
-  const displayAuthor = authorName.trim() || "Author Name";
-  const displayCategory = category || "Fiction";
-  const displayLanguage = language || "English";
-  const displayDescription =
-    description.trim() ||
-    "No book description provided yet. Add your synopsis in the details section to preview how readers will discover your story on Wonder Emporium.";
-
-  // Reader sample text generation based on description or book theme
-  const samplePages = [
-    {
-      page: 1,
-      chapter: "Chapter I",
-      subtitle: "The Beginning of the Journey",
-      content: [
-        displayDescription,
-        "The wind carried an ancient whisper through the quiet corridors of the emporium, stirring pages that had remained unturned for decades. Every book held a secret, but this particular volume seemed alive with quiet anticipation.",
-        "As morning light filtered through the stained-glass arches, illuminating dust motes dancing in the amber glow, the realization dawned: some stories do not merely ask to be read—they demand to be lived.",
-      ],
-    },
-    {
-      page: 2,
-      chapter: "Chapter I (Continued)",
-      subtitle: "Voices in the Archive",
-      content: [
-        "In the heart of the library stood the Great Index, bound in dark morocco leather and edged in tarnished gold. Generations of storytellers had inscribed their thoughts upon its vellum leaves.",
-        "To hold a book is to hold the mind of another across distance and time. Here, between gilded covers and parchment sheets, memory transforms into something enduring, untouchable by the passing years.",
-        "She ran her fingers along the embossed lettering of the spine, feeling the subtle press of history beneath her fingertips.",
-      ],
-    },
-    {
-      page: 3,
-      chapter: "Chapter II",
-      subtitle: "The Unfolding Tale",
-      content: [
-        "The subsequent days brought answers that only posed deeper questions. What began as a simple discovery rapidly unfolded into an adventure beyond the boundaries of the ordinary world.",
-        "Characters once confined to whispered rumors stepped forward into sharp relief. Each chapter drew the reader deeper into the heart of Wonder Emporium, where art, craft, and imagination converged.",
-      ],
-    },
-  ];
-
-  const currentPageData = samplePages.find((p) => p.page === readerPage) || samplePages[0];
-
-  const themeClasses = {
-    light: "bg-[#fcfbf7] text-[#24352f] border-stone-200",
-    sepia: "bg-[#f4ecd8] text-[#433422] border-[#e2d5bc]",
-    dark: "bg-[#1a2321] text-[#e8eee9] border-[#2f3d38]",
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative flex h-[92vh] w-full max-w-5xl flex-col rounded-xl bg-white shadow-2xl border border-stone-200 overflow-hidden">
-        {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-stone-200 bg-[#faf8f2] px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-[#cfaf45]/20 text-[#8c7423]">
-              <Eye className="size-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-900 leading-snug">Book Preview</h2>
-              <p className="text-xs text-slate-500">
-                Experience how readers will see your book on the Wonder Emporium marketplace and inside the reader.
-              </p>
-            </div>
-          </div>
-
-          {/* Preview Tab Navigation */}
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-lg bg-stone-200/70 p-1">
-              <button
-                type="button"
-                onClick={() => onTabChange("cover")}
-                className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-xs font-bold transition ${
-                  activeTab === "cover"
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <Monitor className="size-3.5 text-[#cfaf45]" />
-                <span>Storefront Cover</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onTabChange("reader")}
-                className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-xs font-bold transition ${
-                  activeTab === "reader"
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <BookOpen className="size-3.5 text-[#cfaf45]" />
-                <span>Inside the Book</span>
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="ml-2 flex size-8 items-center justify-center rounded-full text-slate-400 hover:bg-stone-200 hover:text-slate-700 transition"
-              aria-label="Close preview"
-            >
-              <X className="size-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto bg-stone-100 p-4 sm:p-8">
-          {activeTab === "cover" ? (
-            /* ============================================================== */
-            /* TAB 1: WEBSITE STOREFRONT / COVER PREVIEW                      */
-            /* ============================================================== */
-            <div className="mx-auto max-w-4xl space-y-4">
-              <div className="flex items-center justify-between text-xs text-slate-500 px-1">
-                <span className="flex items-center gap-1 font-medium">
-                  <ExternalLink className="size-3.5 text-[#cfaf45]" />
-                  Website Storefront View: Wonder Emporium Book Details
-                </span>
-                <span className="rounded-full bg-amber-100 px-2.5 py-0.5 font-semibold text-amber-900">
-                  Live Mockup
-                </span>
-              </div>
-
-              {/* Website Book Hero Card Mockup */}
-              <div className="rounded-xl border border-stone-200 bg-white p-6 sm:p-10 shadow-sm">
-                <div className="grid gap-8 lg:grid-cols-12 lg:gap-12">
-                  {/* Left Column: Cover Showcase */}
-                  <div className="lg:col-span-5 flex flex-col items-center">
-                    <div className="relative aspect-[2/3] w-full max-w-[280px] overflow-hidden rounded-lg border-2 border-stone-300 bg-gradient-to-br from-[#24352f] to-[#121c18] shadow-xl">
-                      {coverUrl ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={coverUrl}
-                          alt={displayTitle}
-                          className="size-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex size-full flex-col items-center justify-center p-6 text-center text-white">
-                          <BookOpen className="size-16 text-[#cfaf45] opacity-80 mb-3" />
-                          <h4 className="font-serif text-lg font-bold leading-snug line-clamp-2 text-[#fcfbf7]">
-                            {displayTitle}
-                          </h4>
-                          <p className="mt-2 text-xs text-[#cfaf45] font-medium tracking-wider uppercase">
-                            {displayAuthor}
-                          </p>
-                          <span className="mt-4 rounded border border-[#cfaf45]/50 px-2 py-0.5 text-[10px] uppercase tracking-widest text-[#cfaf45]">
-                            Cover Placeholder
-                          </span>
-                        </div>
-                      )}
-                      {/* Storefront Badges */}
-                      <div className="absolute left-3 top-3 flex flex-col gap-1.5">
-                        <span className="inline-flex min-h-[22px] items-center bg-[#cfaf45] px-2.5 text-[10px] font-bold uppercase tracking-wider text-[#1a2321] rounded-sm shadow-sm">
-                          Wonder Selection
-                        </span>
-                        <span className="inline-flex min-h-[22px] items-center bg-[#24352f] px-2.5 text-[10px] font-bold uppercase tracking-wider text-white rounded-sm shadow-sm">
-                          {displayCategory}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-center text-xs text-slate-400">
-                      High-resolution book cover as seen by marketplace readers
-                    </p>
-                  </div>
-
-                  {/* Right Column: Book Details & Format Selector */}
-                  <div className="lg:col-span-7 flex flex-col justify-between space-y-6">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-widest text-[#a88922]">
-                        {displayCategory} • {displayLanguage} • {ageGroup}
-                      </p>
-                      <h1 className="mt-2 text-2xl sm:text-3xl font-extrabold text-[#24352f] leading-tight font-serif">
-                        {displayTitle}
-                      </h1>
-                      <p className="mt-2 text-base text-slate-600">
-                        By <span className="font-semibold text-[#24352f] underline decoration-[#cfaf45] underline-offset-4">{displayAuthor}</span>
-                      </p>
-
-                      {/* Mock Rating */}
-                      <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
-                        <div className="flex items-center text-[#cfaf45]">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <Star key={i} className="size-4 fill-current stroke-current" />
-                          ))}
-                        </div>
-                        <span className="font-bold text-slate-700">5.0</span>
-                        <span>(New Release)</span>
-                      </div>
-
-                      {/* Available Formats Bar */}
-                      <div className="mt-6">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2.5">
-                          Available Formats
-                        </h4>
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                          {formats.length > 0 ? (
-                            formats.map((fmt) => (
-                              <div
-                                key={fmt}
-                                className="rounded-lg border-2 border-[#cfaf45] bg-[#faf8f2] p-3 text-left shadow-sm"
-                              >
-                                <p className="text-xs font-bold text-[#24352f]">{formatLabels[fmt]}</p>
-                                <p className="mt-0.5 text-xs font-extrabold text-[#8c7423]">$19.99</p>
-                              </div>
-                            ))
-                          ) : (
-                            <div className="col-span-full rounded border border-dashed border-slate-300 p-3 text-xs text-slate-500">
-                              No format selected yet. Choose eBook, Audiobook, Hardcover, or Paperback below.
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Book Synopsis Excerpt */}
-                      <div className="mt-6 space-y-2 border-t border-stone-200 pt-5">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                          About this Book
-                        </h4>
-                        <p className="text-sm leading-relaxed text-slate-600 line-clamp-4">
-                          {displayDescription}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Mock Action Row */}
-                    <div className="pt-4 border-t border-stone-100 flex flex-wrap items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => onTabChange("reader")}
-                        className="inline-flex h-11 items-center gap-2 rounded-md bg-[#24352f] px-5 text-sm font-semibold text-white shadow-sm hover:bg-[#1a2823] transition"
-                      >
-                        <BookOpen className="size-4 text-[#cfaf45]" />
-                        <span>Read Inside Sample</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="inline-flex h-11 items-center gap-2 rounded-md border border-[#cfaf45] bg-white px-5 text-sm font-bold text-[#8c7423] shadow-sm hover:bg-[#faf8f2] transition pointer-events-none"
-                      >
-                        <ShoppingBag className="size-4" />
-                        <span>Add to Cart ($19.99)</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* ============================================================== */
-            /* TAB 2: INSIDE OF THE BOOK / READER PREVIEW                     */
-            /* ============================================================== */
-            <div className="mx-auto max-w-3xl space-y-4">
-              {/* Reader Controls Toolbar */}
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-4 py-3 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Theme:</span>
-                  <div className="flex rounded-md border border-stone-300 overflow-hidden text-xs font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => onThemeChange("light")}
-                      className={`px-3 py-1 transition ${
-                        readerTheme === "light"
-                          ? "bg-[#24352f] text-white"
-                          : "bg-white text-slate-700 hover:bg-stone-50"
-                      }`}
-                    >
-                      Light
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onThemeChange("sepia")}
-                      className={`px-3 py-1 transition ${
-                        readerTheme === "sepia"
-                          ? "bg-[#8c7423] text-white"
-                          : "bg-[#f4ecd8] text-[#433422] hover:bg-[#ebd8b3]"
-                      }`}
-                    >
-                      Sepia
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onThemeChange("dark")}
-                      className={`px-3 py-1 transition ${
-                        readerTheme === "dark"
-                          ? "bg-[#121c18] text-white border-l border-stone-700"
-                          : "bg-[#24352f] text-stone-200 hover:bg-[#1a2823]"
-                      }`}
-                    >
-                      Dark
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Font Size:</span>
-                  <div className="flex items-center gap-1 rounded-md border border-stone-300 bg-white px-2 py-1">
-                    <button
-                      type="button"
-                      onClick={() => onFontSizeChange(Math.max(14, readerFontSize - 2))}
-                      disabled={readerFontSize <= 14}
-                      className="rounded px-1.5 py-0.5 text-xs font-bold text-slate-700 hover:bg-stone-100 disabled:opacity-40"
-                    >
-                      A-
-                    </button>
-                    <span className="px-2 text-xs font-semibold text-slate-600">{readerFontSize}px</span>
-                    <button
-                      type="button"
-                      onClick={() => onFontSizeChange(Math.min(26, readerFontSize + 2))}
-                      disabled={readerFontSize >= 26}
-                      className="rounded px-1.5 py-0.5 text-xs font-bold text-slate-700 hover:bg-stone-100 disabled:opacity-40"
-                    >
-                      A+
-                    </button>
-                  </div>
-                </div>
-
-                <div className="text-xs font-semibold text-slate-500">
-                  Page {readerPage} of {samplePages.length}
-                  {ebookFileName && (
-                    <span className="ml-2 font-normal text-slate-400">({ebookFileName})</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Reader Book Page Simulation */}
-              <div
-                className={`relative min-h-[480px] rounded-xl border p-8 sm:p-14 shadow-md transition-colors duration-200 ${
-                  themeClasses[readerTheme]
-                }`}
-              >
-                {/* Book Header Inside Reader */}
-                <div className="mb-8 flex items-center justify-between border-b border-current/15 pb-4 text-xs opacity-70">
-                  <span className="truncate font-serif italic tracking-wide">{displayTitle}</span>
-                  <span className="tracking-widest uppercase font-semibold">{currentPageData.chapter}</span>
-                </div>
-
-                {/* Chapter Title & Interior Layout */}
-                <div className="space-y-6">
-                  <div className="text-center space-y-1 mb-8">
-                    <h3 className="font-serif text-2xl font-bold tracking-tight">
-                      {currentPageData.chapter}
-                    </h3>
-                    <p className="font-serif italic text-sm opacity-80">
-                      {currentPageData.subtitle}
-                    </p>
-                    <div className="mx-auto mt-3 h-0.5 w-12 bg-[#cfaf45]/80" />
-                  </div>
-
-                  <div
-                    className="font-serif leading-relaxed space-y-5"
-                    style={{ fontSize: `${readerFontSize}px` }}
-                  >
-                    {currentPageData.content.map((paragraph, idx) => (
-                      <p
-                        key={idx}
-                        className={`text-justify ${
-                          idx === 0 && readerPage === 1 ? "first-letter:float-left first-letter:mr-3 first-letter:text-5xl first-letter:font-bold first-letter:text-[#cfaf45]" : ""
-                        }`}
-                      >
-                        {paragraph}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Book Footer Inside Reader */}
-                <div className="mt-12 flex items-center justify-between border-t border-current/15 pt-4 text-xs opacity-70">
-                  <span>Wonder Emporium Reader</span>
-                  <span className="font-serif font-bold">~ {readerPage} ~</span>
-                </div>
-              </div>
-
-              {/* Reader Pagination Controls */}
-              <div className="flex items-center justify-between rounded-lg border border-stone-200 bg-white p-3 shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => onPageChange(Math.max(1, readerPage - 1))}
-                  disabled={readerPage <= 1}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-stone-50 disabled:opacity-40 transition"
-                >
-                  <ChevronLeft className="size-4" />
-                  <span>Previous Page</span>
-                </button>
-
-                <div className="flex items-center gap-1.5">
-                  {samplePages.map((p) => (
-                    <button
-                      key={p.page}
-                      type="button"
-                      onClick={() => onPageChange(p.page)}
-                      className={`flex size-8 items-center justify-center rounded text-xs font-bold transition ${
-                        readerPage === p.page
-                          ? "bg-[#24352f] text-white"
-                          : "text-slate-600 hover:bg-stone-100"
-                      }`}
-                    >
-                      {p.page}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => onPageChange(Math.min(samplePages.length, readerPage + 1))}
-                  disabled={readerPage >= samplePages.length}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-stone-50 disabled:opacity-40 transition"
-                >
-                  <span>Next Page</span>
-                  <ChevronRight className="size-4" />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Modal Footer */}
-        <div className="flex items-center justify-between border-t border-stone-200 bg-[#faf8f2] px-6 py-3 text-xs text-slate-500">
-          <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-emerald-500" />
-            <span>Interactive Author Preview Mode</span>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition shadow-sm"
-          >
-            Close Preview
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Edit3, Eye, Search, Send, Trash2 } from "lucide-react";
+import { BookOpen, Edit3, Eye, Search, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { AuthorBooksData, BackendBook, BookStatus } from "../types";
+import { BookPreviewModal } from "./book-preview-modal";
 
 const statusStyles: Record<BookStatus, string> = {
   APPROVED: "bg-green-500/10 text-green-700",
@@ -22,6 +23,8 @@ export function AuthorBooksPageView({ data, accessToken }: { data: AuthorBooksDa
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<BookStatus | "ALL">("ALL");
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [previewBook, setPreviewBook] = useState<BackendBook | null>(null);
+
   const books = useMemo(() => data.books.filter((book) =>
     (status === "ALL" || book.status === status) && book.title.toLowerCase().includes(query.toLowerCase())), [data.books, query, status]);
 
@@ -68,19 +71,55 @@ export function AuthorBooksPageView({ data, accessToken }: { data: AuthorBooksDa
             <table className="w-full min-w-[850px] text-left">
               <thead className="bg-lime-50 text-sm text-teal-950"><tr><th className="p-4">Book</th><th className="p-4">Formats</th><th className="p-4">Price</th><th className="p-4">Status</th><th className="p-4 text-right">Actions</th></tr></thead>
               <tbody>
-                {books.map((book) => <BookRow key={book.id} book={book} pending={pendingId === book.id} onSubmit={() => mutate(`/books/${book.id}/submit`, "PATCH", "Book submitted for review.")} onDelete={() => mutate(`/books/${book.id}`, "DELETE", "Book deleted.")} />)}
+                {books.map((book) => (
+                  <BookRow
+                    key={book.id}
+                    book={book}
+                    pending={pendingId === book.id}
+                    onPreview={() => setPreviewBook(book)}
+                    onSubmit={() => mutate(`/books/${book.id}/submit`, "PATCH", "Book submitted for review.")}
+                    onDelete={() => mutate(`/books/${book.id}`, "DELETE", "Book deleted.")}
+                  />
+                ))}
               </tbody>
             </table>
             {!books.length ? <p className="py-12 text-center text-slate-500">No books match this view.</p> : null}
           </div>
         </CardContent>
       </Card>
+
+      {previewBook && (
+        <BookPreviewModal
+          isOpen={Boolean(previewBook)}
+          onClose={() => setPreviewBook(null)}
+          coverUrl={previewBook.bookCover}
+          title={previewBook.title}
+          authorName={previewBook.authorName}
+          description={previewBook.description}
+          category={previewBook.category}
+          language={previewBook.language}
+          formats={previewBook.formats.map((f) => f.formatType)}
+        />
+      )}
     </div>
   );
 }
 
-function BookRow({ book, pending, onSubmit, onDelete }: { book: BackendBook; pending: boolean; onSubmit: () => void; onDelete: () => void }) {
-  const editable = book.status === "DRAFT" || book.status === "REJECTED";
+function BookRow({
+  book,
+  pending,
+  onPreview,
+  onSubmit,
+  onDelete,
+}: {
+  book: BackendBook;
+  pending: boolean;
+  onPreview: () => void;
+  onSubmit: () => void;
+  onDelete: () => void;
+}) {
+  const editable = true; // All books can be edited so authors can update author name, details, prices, etc.
+  const canSubmit = book.status === "DRAFT" || book.status === "REJECTED";
   const price = book.sellingPrice ?? book.formats[0]?.listPrice;
   const formats = [book.ebookAvailable && "eBook", book.audiobookAvailable && "Audio", book.printAvailable && "Print"].filter(Boolean).join(", ") || "—";
   return (
@@ -90,10 +129,11 @@ function BookRow({ book, pending, onSubmit, onDelete }: { book: BackendBook; pen
       <td className="p-4 text-sm">{price == null ? "—" : `$${price.toFixed(2)}`}</td>
       <td className="p-4"><span className={cn("rounded-full px-3 py-1 text-xs font-semibold", statusStyles[book.status])}>{book.status}</span></td>
       <td className="p-4"><div className="flex justify-end gap-2">
-        <Link href={`/author-dashboard/books/${book.id}`} aria-label={`View ${book.title}`} className="rounded p-2 text-slate-600 hover:bg-slate-100"><Eye className="size-4" /></Link>
-        {editable ? <Link href={`/author-dashboard/upload-content?bookId=${book.id}`} aria-label={`Edit ${book.title}`} className="rounded p-2 text-blue-700 hover:bg-blue-50"><Edit3 className="size-4" /></Link> : null}
-        {editable ? <button disabled={pending} onClick={onSubmit} aria-label={`Submit ${book.title}`} className="rounded p-2 text-amber-700 hover:bg-amber-50"><Send className="size-4" /></button> : null}
-        <button disabled={pending} onClick={onDelete} aria-label={`Delete ${book.title}`} className="rounded p-2 text-red-700 hover:bg-red-50"><Trash2 className="size-4" /></button>
+        <button type="button" onClick={onPreview} title="Preview book" aria-label={`Preview ${book.title}`} className="rounded p-2 text-[#997b1e] hover:bg-amber-50"><Eye className="size-4" /></button>
+        <Link href={`/author-dashboard/books/${book.id}`} title="View details" aria-label={`View ${book.title}`} className="rounded p-2 text-slate-600 hover:bg-slate-100"><BookOpen className="size-4" /></Link>
+        {editable ? <Link href={`/author-dashboard/upload-content?bookId=${book.id}`} title="Edit book" aria-label={`Edit ${book.title}`} className="rounded p-2 text-blue-700 hover:bg-blue-50"><Edit3 className="size-4" /></Link> : null}
+        {canSubmit ? <button disabled={pending} onClick={onSubmit} title="Submit for review" aria-label={`Submit ${book.title}`} className="rounded p-2 text-amber-700 hover:bg-amber-50"><Send className="size-4" /></button> : null}
+        <button disabled={pending} onClick={onDelete} title="Delete book" aria-label={`Delete ${book.title}`} className="rounded p-2 text-red-700 hover:bg-red-50"><Trash2 className="size-4" /></button>
       </div></td>
     </tr>
   );
