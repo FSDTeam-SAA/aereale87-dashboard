@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 type ProfileData = {
   firstName: string | null;
   lastName: string | null;
+  bio: string | null;
   avatarUrl: string | null;
   location: string | null;
 };
@@ -13,6 +14,7 @@ type ProfileData = {
 const emptyProfile: ProfileData = {
   firstName: null,
   lastName: null,
+  bio: null,
   avatarUrl: null,
   location: null,
 };

@@ -307,10 +307,10 @@ export function AdminTaxFormsPage({ initialData, accessToken }: Props) {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                              title="Open uploaded W-9 PDF"
+                              title={`Open uploaded ${item.taxFormType || "Tax Form"} PDF`}
                             >
                               <FileText className="size-3.5 text-amber-600" />
-                              <span>View W-9</span>
+                              <span>View {item.taxFormType || "Form"}</span>
                               <ExternalLink className="size-3 text-slate-400" />
                             </a>
                           ) : (

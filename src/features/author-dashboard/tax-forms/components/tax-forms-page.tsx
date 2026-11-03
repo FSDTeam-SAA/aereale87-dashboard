@@ -351,8 +351,12 @@ export function TaxFormsPage({ accessToken }: TaxFormsPageProps) {
                 Submitted {new Date(kycSubmittedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
               </p>
             )}
-            {uploadedTaxFormUrl && (
-              <div className="mt-3">
+            {uploadedTaxFormUrl ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
+                  <CheckCircle className="size-3.5 text-emerald-600" />
+                  Tax Form Received ({taxFormType || "W-9"})
+                </span>
                 <a
                   href={uploadedTaxFormUrl}
                   target="_blank"
@@ -360,9 +364,16 @@ export function TaxFormsPage({ accessToken }: TaxFormsPageProps) {
                   className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-50"
                 >
                   <FileText className="size-3.5 text-amber-600" />
-                  <span>View Submitted W-9 Form</span>
+                  <span>View Submitted {taxFormType || "Tax Form"} (Vault)</span>
                   <ExternalLink className="size-3 text-amber-700" />
                 </a>
+              </div>
+            ) : (
+              <div className="mt-3">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+                  <AlertCircle className="size-3.5 text-amber-500" />
+                  Tax Form Not Received
+                </span>
               </div>
             )}
           </div>

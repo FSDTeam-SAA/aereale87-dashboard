@@ -17,6 +17,8 @@ export type AdminAuthor = {
     avatarUrl: string | null;
   } | null;
   bookCount: number;
+  taxFormReceived?: boolean;
+  taxFormType?: string | null;
   kyc?: {
     kycStatus: "NOT_SUBMITTED" | "SUBMITTED" | "APPROVED" | "REJECTED";
     taxFormType: string | null;

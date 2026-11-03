@@ -20,19 +20,73 @@ export async function POST(req: NextRequest) {
 
   const idFrontFile = formData.get("idFront");
   const idBackFile = formData.get("idBack");
-  const taxFormFile = formData.get("taxFormFile"); // optional PDF
-  const taxFormType = formData.get("taxFormType");
-  const taxpayerName = formData.get("taxpayerName");
-  const taxId = formData.get("taxId");
-  const taxCountry = formData.get("taxCountry");
+  const taxFormFile = formData.get("taxFormFile");
+  const taxFormType = (formData.get("taxFormType") as string) || "W-9";
+  const taxpayerName = (formData.get("taxpayerName") as string) || "";
+  const taxId = (formData.get("taxId") as string) || "";
+  const taxCountry = (formData.get("taxCountry") as string) || "US";
+  const mode = formData.get("mode"); // "tax-only" or default
 
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+  // Handle dedicated Tax Form upload (W-9 / W-8BEN portal)
+  if (mode === "tax-only" || (!(idFrontFile instanceof File) && taxFormFile instanceof File)) {
+    if (!(taxFormFile instanceof File)) {
+      return NextResponse.json({ error: "Tax form file (W-9 or W-8BEN) is required." }, { status: 400 });
+    }
+    if (!ALLOWED_TYPES.includes(taxFormFile.type)) {
+      return NextResponse.json({ error: `Invalid file type for tax form: ${taxFormFile.type}. Please upload PDF or image.` }, { status: 422 });
+    }
+    if (taxFormFile.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: "Tax form exceeds 5MB size limit." }, { status: 422 });
+    }
+
+    if (apiUrl) {
+      try {
+        const backendForm = new FormData();
+        backendForm.append("taxFormFile", taxFormFile);
+        backendForm.append("taxFormType", taxFormType);
+        backendForm.append("taxpayerName", taxpayerName);
+        backendForm.append("taxId", taxId);
+        backendForm.append("taxCountry", taxCountry);
+
+        const backendRes = await fetch(`${apiUrl}/author/kyc/tax-form`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session.accessToken}` },
+          body: backendForm,
+        });
+
+        const json = (await backendRes.json()) as { message?: string; error?: string; kycStatus?: string; taxFormFileUrl?: string };
+        if (!backendRes.ok) {
+          return NextResponse.json({ error: json.error ?? json.message ?? "Failed to upload tax form." }, { status: backendRes.status });
+        }
+        return NextResponse.json(
+          {
+            message: json.message ?? "Tax form uploaded successfully into secure encrypted vault.",
+            kycStatus: json.kycStatus ?? "SUBMITTED",
+            taxFormFileUrl: json.taxFormFileUrl,
+            taxFormType,
+          },
+          { status: 200 },
+        );
+      } catch (err) {
+        console.error("[tax-forms] Dedicated tax form upload failed:", err);
+        return NextResponse.json({ error: "Failed to reach document vault. Please try again." }, { status: 502 });
+      }
+    }
+  }
+
+  // Full KYC Submission
   if (!(idFrontFile instanceof File) || !(idBackFile instanceof File)) {
     return NextResponse.json({ error: "Both ID front and back images are required." }, { status: 400 });
+  }
+  if (!taxFormFile || !(taxFormFile instanceof File)) {
+    return NextResponse.json({ error: "Tax form document (W-9 or W-8BEN) is required." }, { status: 400 });
   }
   if (!taxFormType || !taxpayerName || !taxId || !taxCountry) {
     return NextResponse.json({ error: "Tax form fields (taxFormType, taxpayerName, taxId, taxCountry) are required." }, { status: 400 });
   }
-  for (const [label, file] of [["ID front", idFrontFile], ["ID back", idBackFile]] as [string, File][]) {
+  for (const [label, file] of [["ID front", idFrontFile], ["ID back", idBackFile], ["Tax form", taxFormFile]] as [string, File][]) {
     if (!ALLOWED_TYPES.includes(file.type)) {
       return NextResponse.json({ error: `Invalid file type for ${label}: ${file.type}` }, { status: 422 });
     }
@@ -41,17 +95,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (apiUrl) {
     try {
       const backendForm = new FormData();
       backendForm.append("idFront", idFrontFile);
       backendForm.append("idBack", idBackFile);
-      if (taxFormFile instanceof File) backendForm.append("taxFormFile", taxFormFile);
-      backendForm.append("taxFormType", taxFormType as string);
-      backendForm.append("taxpayerName", taxpayerName as string);
-      backendForm.append("taxId", taxId as string);
-      backendForm.append("taxCountry", taxCountry as string);
+      backendForm.append("taxFormFile", taxFormFile);
+      backendForm.append("taxFormType", taxFormType);
+      backendForm.append("taxpayerName", taxpayerName);
+      backendForm.append("taxId", taxId);
+      backendForm.append("taxCountry", taxCountry);
 
       const backendRes = await fetch(`${apiUrl}/author/kyc/submit`, {
         method: "POST",

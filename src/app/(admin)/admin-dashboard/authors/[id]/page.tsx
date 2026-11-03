@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { getAuthor } from "@/features/admin-dashboard/authors/api/authors.api";
 import { AuthorActionDropdown } from "@/features/admin-dashboard/authors/components/author-action-dropdown";
 import { AdminKycReviewPanel } from "@/features/admin-dashboard/authors/components/admin-kyc-review-panel";
+import { AdminAuthorBioEditor } from "@/features/admin-dashboard/authors/components/admin-author-bio-editor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function AdminAuthorDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -46,6 +47,19 @@ export default async function AdminAuthorDetailPage({ params }: { params: Promis
             <Detail label="Email" value={author.email} />
             <Detail label="Username" value={author.username} />
             <Detail label="Account Status" value={author.status === "INACTIVE" ? "Pending account approval" : author.status} />
+            <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-3">
+              <span className="text-sm text-slate-500">Tax Form (W-9 / W-8BEN)</span>
+              {author.taxFormReceived || (author.kyc && author.kyc.kycStatus !== "NOT_SUBMITTED") ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                  <span className="size-1.5 rounded-full bg-emerald-500" />
+                  Form Received ({author.kyc?.taxFormType || "W-9"})
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+                  Form Not Received
+                </span>
+              )}
+            </div>
             <Detail label="Email verified" value={author.verified ? "Yes" : "No"} />
             <Detail label="Published books" value={String(author.bookCount)} />
             <Detail label="Founding author" value={author.isFoundingAuthor ? "Yes" : "No"} />
@@ -54,12 +68,15 @@ export default async function AdminAuthorDetailPage({ params }: { params: Promis
 
         <Card className="bg-white">
           <CardHeader><CardTitle>Author Profile</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-4">
             <Detail label="First name" value={author.profile?.firstName || "—"} />
             <Detail label="Last name" value={author.profile?.lastName || "—"} />
-            <div>
-              <p className="text-xs uppercase tracking-wider text-slate-500">Bio</p>
-              <p className="mt-1 text-sm text-slate-800">{author.profile?.bio || "No biography provided."}</p>
+            <div className="pt-1">
+              <AdminAuthorBioEditor
+                authorId={author.id}
+                initialBio={author.profile?.bio ?? null}
+                accessToken={session.accessToken}
+              />
             </div>
           </CardContent>
         </Card>

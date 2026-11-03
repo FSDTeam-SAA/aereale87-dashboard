@@ -13,19 +13,34 @@ import { AuthorActionDropdown } from "./author-action-dropdown";
 export function AuthorsPage({ data, accessToken }: { data: PaginatedAuthors; accessToken: string }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<AuthorStatus | "ALL">("ALL");
-  const [w9Filter, setW9Filter] = useState<"ALL" | "SUBMITTED" | "APPROVED" | "MISSING">("ALL");
+  const [taxFormFilter, setTaxFormFilter] = useState<"ALL" | "RECEIVED" | "NOT_RECEIVED">("ALL");
 
   const authors = useMemo(() => data.authors.filter((author) => {
     const name = `${author.profile?.firstName || ""} ${author.profile?.lastName || ""} ${author.email}`.toLowerCase();
     const matchesQuery = name.includes(query.toLowerCase());
     const matchesStatus = status === "ALL" || author.status === status;
-    const matchesW9 =
-      w9Filter === "ALL" ||
-      (w9Filter === "SUBMITTED" && author.kyc?.kycStatus === "SUBMITTED") ||
-      (w9Filter === "APPROVED" && author.kyc?.kycStatus === "APPROVED") ||
-      (w9Filter === "MISSING" && (!author.kyc || author.kyc.kycStatus === "NOT_SUBMITTED"));
-    return matchesQuery && matchesStatus && matchesW9;
-  }), [data.authors, query, status, w9Filter]);
+    const isFormReceived = Boolean(
+      author.taxFormReceived ||
+      author.kyc?.taxFormFileUrl ||
+      (author.kyc?.kycStatus && author.kyc.kycStatus !== "NOT_SUBMITTED")
+    );
+    const matchesTaxForm =
+      taxFormFilter === "ALL" ||
+      (taxFormFilter === "RECEIVED" && isFormReceived) ||
+      (taxFormFilter === "NOT_RECEIVED" && !isFormReceived);
+    return matchesQuery && matchesStatus && matchesTaxForm;
+  }), [data.authors, query, status, taxFormFilter]);
+
+  const receivedTaxCount = useMemo(
+    () =>
+      data.authors.filter(
+        (a) =>
+          a.taxFormReceived ||
+          a.kyc?.taxFormFileUrl ||
+          (a.kyc?.kycStatus && a.kyc.kycStatus !== "NOT_SUBMITTED"),
+      ).length,
+    [data.authors],
+  );
 
   const pendingKycCount = useMemo(
     () => data.authors.filter((a) => a.kyc?.kycStatus === "SUBMITTED").length,
@@ -58,6 +73,7 @@ export function AuthorsPage({ data, accessToken }: { data: PaginatedAuthors; acc
         <CardContent className="p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 mr-1">Status:</span>
               {(["ALL", "INACTIVE", "ACTIVE", "SUSPENDED"] as const).map((item) => (
                 <button
                   key={item}
@@ -70,6 +86,30 @@ export function AuthorsPage({ data, accessToken }: { data: PaginatedAuthors; acc
                   )}
                 >
                   {item === "INACTIVE" ? "PENDING" : item}
+                </button>
+              ))}
+
+              <div className="mx-2 hidden h-5 w-px bg-slate-200 sm:block" />
+
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 mr-1">Tax Form:</span>
+              {(
+                [
+                  { id: "ALL", label: "All" },
+                  { id: "RECEIVED", label: `Received (${receivedTaxCount})` },
+                  { id: "NOT_RECEIVED", label: `Not Received (${data.authors.length - receivedTaxCount})` },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setTaxFormFilter(f.id)}
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
+                    taxFormFilter === f.id
+                      ? "bg-[#24352f] text-white shadow-sm"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  )}
+                >
+                  {f.label}
                 </button>
               ))}
             </div>
@@ -92,7 +132,7 @@ export function AuthorsPage({ data, accessToken }: { data: PaginatedAuthors; acc
                   <th className="p-4 font-semibold">Author</th>
                   <th className="p-4 font-semibold">Email</th>
                   <th className="p-4 font-semibold">Books</th>
-                  <th className="p-4 font-semibold">W-9 / Tax Status</th>
+                  <th className="p-4 font-semibold">Tax Form Flag (W-9 / W-8BEN)</th>
                   <th className="p-4 font-semibold">Account Status</th>
                   <th className="p-4 text-right font-semibold">Action</th>
                 </tr>
@@ -120,27 +160,30 @@ export function AuthorsPage({ data, accessToken }: { data: PaginatedAuthors; acc
                       <td className="p-4 text-slate-600">{author.email}</td>
                       <td className="p-4 font-medium text-slate-700">{author.bookCount}</td>
                       <td className="p-4">
-                        {author.kyc?.kycStatus === "APPROVED" ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                            <span className="size-1.5 rounded-full bg-emerald-500" />
-                            {author.kyc.taxFormType || "W-9"} Verified
-                          </span>
-                        ) : author.kyc?.kycStatus === "SUBMITTED" ? (
-                          <Link
-                            href="/admin-dashboard/tax-forms"
-                            className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100 transition"
-                          >
-                            <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
-                            Review {author.kyc.taxFormType || "W-9"}
-                          </Link>
-                        ) : author.kyc?.kycStatus === "REJECTED" ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-200">
-                            <span className="size-1.5 rounded-full bg-red-500" />
-                            Rejected
-                          </span>
+                        {Boolean(
+                          author.taxFormReceived ||
+                            author.kyc?.taxFormFileUrl ||
+                            (author.kyc?.kycStatus &&
+                              author.kyc.kycStatus !== "NOT_SUBMITTED"),
+                        ) ? (
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
+                              <span className="size-1.5 rounded-full bg-emerald-500" />
+                              Form Received ({author.kyc?.taxFormType || author.taxFormType || "W-9"})
+                            </span>
+                            {author.kyc?.kycStatus === "SUBMITTED" && (
+                              <Link
+                                href="/admin-dashboard/tax-forms"
+                                className="text-[11px] font-medium text-amber-700 hover:underline pl-1"
+                              >
+                                Review Document →
+                              </Link>
+                            )}
+                          </div>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-500 ring-1 ring-slate-200">
-                            Not Submitted
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500 ring-1 ring-slate-200">
+                            <span className="size-1.5 rounded-full bg-slate-400" />
+                            Not Received
                           </span>
                         )}
                       </td>

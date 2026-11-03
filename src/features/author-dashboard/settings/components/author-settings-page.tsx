@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 type ProfileData = {
   firstName: string | null;
   lastName: string | null;
+  bio?: string | null;
   avatarUrl: string | null;
   location: string | null;
 };
@@ -200,6 +201,7 @@ export function AuthorSettingsPage({ accessToken, email, name, isFoundingAuthor,
   const [profile, setProfile] = useState({
     firstName: initialProfile.firstName ?? '',
     lastName: initialProfile.lastName ?? '',
+    bio: initialProfile.bio ?? '',
     location: initialProfile.location ?? '',
     avatarUrl: initialProfile.avatarUrl ?? null,
   });
@@ -211,10 +213,15 @@ export function AuthorSettingsPage({ accessToken, email, name, isFoundingAuthor,
 
   async function handleProfileSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (profile.bio.length > 1000) {
+      return toast.error("Biography cannot exceed 1000 characters.");
+    }
+
     const body = {
       firstName: profile.firstName.trim() || undefined,
       lastName: profile.lastName.trim() || undefined,
       location: profile.location.trim() || undefined,
+      bio: profile.bio.trim() || undefined,
     };
 
     setSavingProfile(true);
@@ -236,6 +243,7 @@ export function AuthorSettingsPage({ accessToken, email, name, isFoundingAuthor,
         firstName: body.firstName || prev.firstName,
         lastName: body.lastName || prev.lastName,
         location: body.location || prev.location,
+        bio: body.bio ?? prev.bio,
       }));
 
       toast.success("Profile updated successfully.");
@@ -354,6 +362,40 @@ export function AuthorSettingsPage({ accessToken, email, name, isFoundingAuthor,
             onChange={(e) => setProfile(prev => ({...prev, location: e.target.value}))}
             placeholder="City, Country (e.g. New York, USA)"
           />
+
+          {/* Author Biography with Character Limit */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label htmlFor="bio" className="block text-sm font-medium text-neutral-700">
+                Author Biography
+              </label>
+              <span
+                className={cn(
+                  "text-xs font-medium tabular-nums",
+                  profile.bio.length >= 950
+                    ? "text-red-500 font-semibold"
+                    : profile.bio.length >= 800
+                    ? "text-amber-600"
+                    : "text-neutral-400"
+                )}
+              >
+                {profile.bio.length} / 1000 characters
+              </span>
+            </div>
+            <textarea
+              id="bio"
+              name="bio"
+              rows={4}
+              maxLength={1000}
+              value={profile.bio}
+              onChange={(e) => setProfile(prev => ({ ...prev, bio: e.target.value }))}
+              placeholder="Tell your readers about yourself, your background, writing inspirations, and published works. This will be displayed on your public author page."
+              className="w-full rounded-lg border border-stone-300 bg-stone-50 p-3.5 text-sm text-neutral-800 outline-none transition focus:border-[#cfaf45] focus:ring-2 focus:ring-[#cfaf45]/20"
+            />
+            <p className="text-xs text-neutral-500">
+              Your biography is displayed prominently on your public author profile page. Max 1000 characters.
+            </p>
+          </div>
 
           <div className="flex justify-end pt-1">
             <button

@@ -55,3 +55,18 @@ export function suspendAuthor(id: string, accessToken: string) {
     { method: "PATCH" },
   );
 }
+
+export function updateAuthorProfile(
+  id: string,
+  data: { firstName?: string; lastName?: string; location?: string; bio?: string },
+  accessToken: string,
+) {
+  return adminFetch<{ message: string }>(
+    `/admin/users/authors/${id}/profile`,
+    accessToken,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
+}
